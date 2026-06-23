@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+        <title>Infinite OS</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <!-- Boot Screen -->
+        <div id="boot">
+            <div id="boot-box">
+                <div id="boot-logo">✦</div>
+                <div id="boot-name">Infinite OS</div>
+                <div id="boot-spinner"><div class="spinner"></div></div>
+                <div id="boot-status">Starting up...</div>
+                <div id="boot-bar-wrap"><div id="boot-bar"></div></div>
+            </div>
+        </div>
+
+        <!-- Desktop -->
+        <div id="desktop"><div id="desktop-icons"></div></div>
+
+        <!-- Windows -->
+        <div id="windows-container"></div>
+
+        <!-- Launcher -->
+        <div id="launcher" class="hide">
+            <div id="launcher-bg" onclick="closeLauncher()"></div>
+            <div id="launcher-box">
+                <div id="launcher-hd">
+                    <span style="font-size: 24px">✦</span>
+                    <span style="font-size: 14px; opacity: 0.5"
+                        >Infinite OS</span
+                    >
+                </div>
+                <div id="launcher-srch">
+                    <input
+                        id="launcher-inp"
+                        type="text"
+                        placeholder="Search for any app..."
+                        autofocus
+                        onkeydown="onLauncherKey(event)"
+                    />
+                    <button id="launcher-go" onclick="searchApp()">
+                        Generate ➤
+                    </button>
+                </div>
+                <div id="launcher-st"></div>
+                <div id="launcher-sug"></div>
+                <div
+                    style="
+                        font-size: 11px;
+                        opacity: 0.3;
+                        padding: 8px 20px;
+                        text-align: center;
+                    "
+                >
+                    AI via remote API (g4f.space) — no local model needed
+                </div>
+            </div>
+        </div>
+
+        <!-- Notifications -->
+        <div id="notif-box"></div>
+
+        <!-- Context Menu -->
+        <div id="ctx" class="hide">
+            <div onclick="openApp('calculator')">🧮 New Calculator</div>
+            <div onclick="openApp('todo list')">✅ New To-Do List</div>
+            <div onclick="openApp('notes')">📝 New Notes</div>
+            <div onclick="openApp('paint')">🎨 New Paint</div>
+            <div class="div"></div>
+            <div onclick="showAbout()">ℹ️ About Infinite OS</div>
+        </div>
+
+        <!-- Taskbar -->
+        <div id="taskbar">
+            <button
+                id="tb-start"
+                onclick="toggleLauncher()"
+                title="Search / Launch apps"
+            >
+                <span>✦</span>
+            </button>
+            <div id="tb-apps"></div>
+            <div id="tb-right"><span id="tb-clock">--:--</span></div>
+        </div>
+
+        <script src="templates.js"></script>
+        <script src="app.js"></script>
+    </body>
+</html>
