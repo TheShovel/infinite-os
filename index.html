@@ -18,6 +18,26 @@
             </div>
         </div>
 
+        <!-- Login Overlay (shown after boot if not authenticated) -->
+        <div id="login-overlay" class="hide">
+            <div class="login-card">
+                <div class="login-logo">✦</div>
+                <h1 class="login-title">Infinite OS</h1>
+                <p id="login-desc" class="login-desc">
+                    Sign in with your Google account to use AI-powered app
+                    generation
+                </p>
+                <button id="login-btn" class="login-btn" onclick="login()">
+                    <span id="login-btn-icon">🔑</span>
+                    <span id="login-btn-text">Sign in</span>
+                </button>
+                <div id="login-status" class="login-status"></div>
+                <div class="login-setup" onclick="showSetupInstructions()">
+                    Need to configure? Click here
+                </div>
+            </div>
+        </div>
+
         <!-- Desktop -->
         <div id="desktop"><div id="desktop-icons"></div></div>
 
@@ -56,7 +76,7 @@
                         text-align: center;
                     "
                 >
-                    AI via remote API (g4f.space) — no local model needed
+                    AI-powered app generation — sign in required
                 </div>
             </div>
         </div>
@@ -71,6 +91,7 @@
             <div onclick="openApp('notes')">📝 New Notes</div>
             <div onclick="openApp('paint')">🎨 New Paint</div>
             <div class="div"></div>
+            <div onclick="showWelcome()">✦ Welcome</div>
             <div onclick="showAbout()">ℹ️ About Infinite OS</div>
         </div>
 
@@ -84,7 +105,12 @@
                 <span>✦</span>
             </button>
             <div id="tb-apps"></div>
-            <div id="tb-right"><span id="tb-clock">--:--</span></div>
+            <div id="tb-right">
+                <button id="tb-logout" onclick="logout()" title="Sign out">
+                    ↩
+                </button>
+                <span id="tb-clock">--:--</span>
+            </div>
         </div>
 
         <script src="templates.js"></script>
