@@ -223,7 +223,26 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.6s;
+    transition: opacity 0.7s ease;
+}
+#boot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at 30% 50%, #1a1a2e 0%, transparent 60%),
+        radial-gradient(ellipse at 70% 50%, #2d1b69 0%, transparent 60%);
+    opacity: 0;
+    animation: bootGlowIn 2.5s ease forwards;
+    pointer-events: none;
+}
+@keyframes bootGlowIn {
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 #boot.hide {
     opacity: 0;
@@ -231,29 +250,70 @@ body {
 }
 #boot-box {
     text-align: center;
+    position: relative;
+    z-index: 1;
+    animation: bootFadeIn 1s ease forwards;
+}
+@keyframes bootFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 #boot-logo {
-    font-size: 48px;
-    margin-bottom: 8px;
+    font-size: 52px;
+    margin-bottom: 10px;
     color: #7c3aed;
+    display: inline-block;
+    animation: bootPulse 2.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 12px rgba(124, 58, 237, 0.4));
+}
+@keyframes bootPulse {
+    0%,
+    100% {
+        transform: scale(1);
+        filter: drop-shadow(0 0 12px rgba(124, 58, 237, 0.4));
+    }
+    50% {
+        transform: scale(1.06);
+        filter: drop-shadow(0 0 28px rgba(124, 58, 237, 0.7));
+    }
 }
 #boot-name {
     font-size: 22px;
     font-weight: 300;
-    letter-spacing: 2px;
+    letter-spacing: 4px;
     margin-bottom: 32px;
     color: #ccc;
+    animation: bootReveal 1.2s ease forwards;
+}
+@keyframes bootReveal {
+    from {
+        opacity: 0;
+        letter-spacing: 12px;
+        filter: blur(4px);
+    }
+    to {
+        opacity: 1;
+        letter-spacing: 4px;
+        filter: blur(0);
+    }
 }
 #boot-spinner {
     margin-bottom: 20px;
 }
 .spinner {
-    width: 28px;
-    height: 28px;
-    border: 3px solid #ffffff1a;
-    border-top-color: #7c3aed;
+    width: 24px;
+    height: 24px;
+    border: 2px solid #ffffff12;
+    border-top-color: #a78bfa;
+    border-bottom-color: #7c3aed;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
     margin: 0 auto;
 }
 @keyframes spin {
@@ -263,24 +323,55 @@ body {
 }
 #boot-status {
     font-size: 13px;
-    color: #888;
+    color: #9898b0;
     margin-bottom: 14px;
     min-height: 20px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
 }
 #boot-bar-wrap {
-    width: 260px;
+    width: 280px;
     height: 3px;
-    background: #ffffff1a;
-    border-radius: 2px;
+    background: #ffffff0d;
+    border-radius: 4px;
     overflow: hidden;
     margin: 0 auto;
+    position: relative;
 }
 #boot-bar {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #7c3aed, #a78bfa);
-    border-radius: 2px;
-    transition: width 0.4s;
+    background: linear-gradient(90deg, #7c3aed, #a78bfa, #7c3aed);
+    background-size: 200% 100%;
+    border-radius: 4px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: barShimmer 1.5s linear infinite;
+}
+@keyframes barShimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Starfield */
+#boot-stars {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+@keyframes twinkle {
+    0%,
+    100% {
+        opacity: 0.15;
+    }
+    50% {
+        opacity: 0.9;
+    }
 }
 
 /* Taskbar */
@@ -582,104 +673,6 @@ body {
     background: var(--accent-hover);
 }
 
-/* ─── Login Overlay ────────────────────────────────────────────────── */
-#login-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-#login-overlay.hide {
-    display: none;
-}
-.login-card {
-    text-align: center;
-    padding: 48px 40px;
-    max-width: 400px;
-}
-.login-logo {
-    font-size: 64px;
-    color: #7c3aed;
-    margin-bottom: 12px;
-}
-.login-title {
-    font-size: 28px;
-    font-weight: 300;
-    letter-spacing: 2px;
-    color: #ccc;
-    margin-bottom: 12px;
-}
-.login-desc {
-    font-size: 14px;
-    color: #888;
-    margin-bottom: 32px;
-    line-height: 1.5;
-}
-.login-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 28px;
-    border: 1px solid #555;
-    border-radius: 24px;
-    background: transparent;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-}
-.login-btn:hover {
-    border-color: #7c3aed;
-    color: #fff;
-    background: #ffffff08;
-}
-.login-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-.login-status {
-    margin-top: 16px;
-    font-size: 13px;
-    color: var(--text2);
-    min-height: 20px;
-}
-.login-setup {
-    margin-top: 20px;
-    font-size: 12px;
-    color: #555;
-    cursor: pointer;
-    transition: color 0.2s;
-}
-.login-setup:hover {
-    color: #888;
-}
-
-/* Taskbar logout button */
-#tb-logout {
-    width: 30px;
-    height: 30px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text2);
-    font-size: 16px;
-    cursor: pointer;
-    transition:
-        background var(--transition),
-        color var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-#tb-logout:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-}
-
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
@@ -693,4 +686,20 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text2);
+}
+
+/* ─── Build / Loading Animations ─────────────────────────────────── */
+@keyframes buildSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes typingPulse {
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 1;
+    }
 }

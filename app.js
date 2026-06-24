@@ -2,24 +2,13 @@
 // Infinite OS — Desktop Environment + Cloud AI Engine (Google Gemini)
 // ═══════════════════════════════════════════════════════════════════════
 
-// ─── Google Cloud OAuth Configuration ──────────────────────────────
-// Backend proxy. This avoids Google OAuth verification in the browser.
-// Put your deployed Cloudflare Worker URL here.
+// ─── Backend Configuration ─────────────────────────────────────────
 const AI_BACKEND_URL = "https://gemini-proxy.niccata24.workers.dev/gemini";
-
-const GOOGLE_CLIENT_ID = "";
-
-const GEMINI_OAUTH_SCOPE =
-  "https://www.googleapis.com/auth/generative-language.retriever";
 
 const AI_MODEL = "gemini-2.0-flash";
 const AI_TEMPERATURE = 0.9;
 const AI_MAX_TOKENS = 65536;
 
-// ─── Auth State ───────────────────────────────────────────────────
-let accessToken = null;
-let userProfile = null;
-let userPicture = null;
 const appCache = {};
 
 // ─── OS App Spec (fed to the AI so it knows how to build apps) ─────
@@ -35,7 +24,7 @@ REQUIREMENTS
 - Design a rich, polished dark UI. Use gradients, shadows, border-radius, smooth transitions, proper spacing, and visual hierarchy. Make it look like a high-quality native app, not a prototype.
 - Full working JavaScript with all features, event handlers, keyboard shortcuts, error handling, and DOM updates.
 - Scoped CSS: prefix all selectors with .app-{name} to avoid conflicts.
-- You MAY use <iframe> to embed external content (maps, charts, videos, web widgets, etc.) — set allow="*" and sandbox as needed. This is great for rich data visualizations or embedded services.
+- You MAY use <iframe> to embed external content (maps, charts, videos, web widgets, music services like https://radio.garden/, etc.) — set allow="*" and sandbox as needed. This is great for rich data visualizations or embedded services.
 - For games: render a proper UI with score, controls, restart button, and visual polish.
 - Do NOT use external resources, CDN links, or external images. Everything must be inline.
 
@@ -165,192 +154,77 @@ function extractHTML(text) {
   return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// GOOGLE OAUTH
-// ═══════════════════════════════════════════════════════════════════════
-
 function bootMsg(msg, pct) {
-  document.getElementById("boot-status").textContent = msg;
+  const el = document.getElementById("boot-status");
+  if (el) el.textContent = msg;
   if (pct !== undefined) {
-    document.getElementById("boot-bar").style.width = Math.min(pct, 100) + "%";
+    const bar = document.getElementById("boot-bar");
+    if (bar) bar.style.width = Math.min(pct, 100) + "%";
   }
 }
 
-async function loadGIS() {
-  if (typeof google !== "undefined" && google.accounts) return;
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
+function createStars() {
+  const container = document.getElementById("boot-stars");
+  if (!container) return;
+  for (let i = 0; i < 80; i++) {
+    const star = document.createElement("div");
+    const size = Math.random() * 2 + 1;
+    star.style.cssText = `
+      position:absolute;
+      width:${size}px;height:${size}px;
+      background:rgba(255,255,255,${Math.random() * 0.4 + 0.2});
+      border-radius:50%;
+      left:${Math.random() * 100}%;
+      top:${Math.random() * 100}%;
+      animation:twinkle ${Math.random() * 3 + 2}s ease-in-out infinite alternate;
+      animation-delay:${Math.random() * 3}s;
+    `;
+    container.appendChild(star);
+  }
 }
 
-function login() {
-  const st = document.getElementById("login-status");
-  const btn = document.getElementById("login-btn");
-
-  if (AI_BACKEND_URL) {
-    accessToken = "backend";
-    userProfile = "User";
-    userPicture = "";
-
-    localStorage.setItem("io_token", accessToken);
-    localStorage.setItem(
-      "io_user",
-      JSON.stringify({ name: userProfile, picture: userPicture }),
-    );
-    localStorage.setItem(
-      "io_expires",
-      String(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    );
-    localStorage.setItem("io_provider", "backend");
-    authComplete();
-    return;
-  }
-
-  if (!GOOGLE_CLIENT_ID) {
-    showSetupInstructions();
-    return;
-  }
-
-  st.textContent = "Loading Google sign-in...";
-  btn.disabled = true;
-
-  loadGIS()
-    .then(() => {
-      st.textContent = "Opening Google sign-in...";
-      try {
-        const client = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: GEMINI_OAUTH_SCOPE,
-          callback: (response) => {
-            btn.disabled = false;
-            if (response.access_token) {
-              accessToken = response.access_token;
-              userProfile = "Google user";
-              userPicture = "";
-
-              let expiresAt = Date.now() + 3600000;
-              try {
-                const ap = JSON.parse(
-                  atob(response.access_token.split(".")[1]),
-                );
-                if (ap.exp) expiresAt = ap.exp * 1000;
-              } catch (_) {}
-
-              localStorage.setItem("io_token", accessToken);
-              localStorage.setItem(
-                "io_user",
-                JSON.stringify({ name: userProfile, picture: userPicture }),
-              );
-              localStorage.setItem("io_expires", String(expiresAt));
-              localStorage.setItem("io_provider", "google");
-              localStorage.setItem("io_scope", GEMINI_OAUTH_SCOPE);
-
-              st.textContent = "✓ Signed in as " + userProfile;
-              setTimeout(authComplete, 400);
-            } else {
-              st.textContent = "✗ Sign-in failed";
-            }
-          },
-          error_callback: (err) => {
-            btn.disabled = false;
-            st.textContent = "✗ " + (err.message || err.type || "Cancelled");
-          },
-        });
-        client.requestAccessToken();
-      } catch (e) {
-        btn.disabled = false;
-        st.textContent = "✗ Error: " + e.message;
-      }
-    })
-    .catch(() => {
-      btn.disabled = false;
-      st.textContent = "✗ Failed to load Google sign-in";
-    });
-}
-
-function authComplete() {
-  document.getElementById("login-overlay").classList.add("hide");
-  document.getElementById("boot").style.display = "none";
-  if (!_welcomed) {
-    _welcomed = true;
-    setTimeout(showWelcome, 300);
-  }
-  updTB();
-}
-
-function logout() {
-  if (
-    typeof google !== "undefined" &&
-    google?.accounts?.oauth2 &&
-    accessToken
-  ) {
+function playStartupSound() {
+  let played = false;
+  const play = () => {
+    if (played) return;
+    played = true;
     try {
-      google.accounts.oauth2.revoke(accessToken, () => {});
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+      const now = ctx.currentTime;
+
+      // Rising arpeggio: C5 → E5 → G5 → C6
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + i * 0.1);
+        gain.gain.setValueAtTime(0, now + i * 0.1);
+        gain.gain.linearRampToValueAtTime(0.1, now + i * 0.1 + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.35);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + i * 0.1);
+        osc.stop(now + i * 0.1 + 0.4);
+      });
+
+      // Soft sub-bass pad underneath
+      const sub = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      sub.type = "sine";
+      sub.frequency.setValueAtTime(130.81, now);
+      subGain.gain.setValueAtTime(0, now);
+      subGain.gain.linearRampToValueAtTime(0.04, now + 0.1);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      sub.connect(subGain).connect(ctx.destination);
+      sub.start(now);
+      sub.stop(now + 1);
     } catch (_) {}
-  }
-  accessToken = null;
-  userProfile = null;
-  userPicture = null;
-  localStorage.removeItem("io_token");
-  localStorage.removeItem("io_user");
-  localStorage.removeItem("io_expires");
-  localStorage.removeItem("io_provider");
-  localStorage.removeItem("io_scope");
-
-  _welcomed = false;
-  Object.keys(S.windows).forEach((id) => {
-    const e = document.getElementById("w-" + id);
-    if (e) e.remove();
-    delete S.windows[id];
-  });
-  S.order.length = 0;
-  S.z = 100;
-  document.getElementById("desktop-icons").innerHTML = "";
-  updTB();
-
-  document.getElementById("login-overlay").classList.remove("hide");
-  const st = document.getElementById("login-status");
-  if (st) st.textContent = "Signed out";
-  const btn = document.getElementById("login-btn");
-  if (btn) btn.disabled = false;
-}
-
-function showSetupInstructions() {
-  const o = document.createElement("div");
-  o.className = "ab-o";
-  o.onclick = (e) => {
-    if (e.target === o) o.remove();
   };
-  o.innerHTML = `<div class="ab-b" style="width:480px;text-align:left;max-height:80vh;overflow-y:auto">
-    <div style="text-align:center;font-size:48px;margin-bottom:8px">⚙️</div>
-    <h2 style="text-align:center;margin-bottom:12px">Google Cloud Setup</h2>
-    <p style="font-size:13px;line-height:1.6;margin-bottom:12px;color:var(--text2)">
-      Infinite OS uses Google Gemini for AI app generation. You need a
-      <strong style="color:var(--text)">Google Cloud project</strong> to enable sign-in.
-    </p>
-    <ol style="font-size:12px;line-height:1.8;padding-left:20px;color:var(--text2)">
-      <li>Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">console.cloud.google.com</a></li>
-      <li>Create a project, enable <strong style="color:var(--text)">Generative Language API</strong></li>
-      <li>Go to <strong style="color:var(--text)">APIs & Services → Credentials</strong></li>
-      <li>Click <strong style="color:var(--text)">+ Create Credentials → OAuth 2.0 Client ID</strong></li>
-      <li>Application type: <strong style="color:var(--text)">Web application</strong></li>
-      <li>Add your domain under <strong style="color:var(--text)">Authorized JavaScript origins</strong></li>
-      <li>When adding scopes, select <strong style="color:var(--text)">.../auth/generative-language.retriever</strong></li>
-      <li>Copy the Client ID into <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">app.js</code> as <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">GOOGLE_CLIENT_ID</code></li>
-    </ol>
-    <p style="font-size:12px;color:var(--text2);margin-top:12px;padding:8px 12px;background:var(--surface);border-radius:var(--radius-sm)">
-      💡 For local dev, add <code style="background:var(--bg3);padding:2px 4px;border-radius:4px">http://localhost</code> and <code style="background:var(--bg3);padding:2px 4px;border-radius:4px">http://localhost:PORT</code> to authorized origins.
-    </p>
-    <p style="font-size:12px;color:var(--text2);margin-top:8px;padding:8px 12px;background:var(--surface);border-radius:var(--radius-sm)">
-      🌟 Gemini has a generous free tier (60 requests/minute). <a href="https://ai.google.dev/pricing" target="_blank" style="color:var(--accent)">See pricing</a>
-    </p>
-    <div style="text-align:center;margin-top:16px"><button onclick="this.closest('.ab-o').remove()">Got it</button></div>
-  </div>`;
-  document.body.appendChild(o);
+
+  // Defer AudioContext creation to first user gesture (avoids autoplay warnings)
+  document.addEventListener("pointerdown", play, { once: true });
+  document.addEventListener("keydown", play, { once: true });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -358,12 +232,7 @@ function showSetupInstructions() {
 // ═══════════════════════════════════════════════════════════════════════
 
 async function callAI(prompt, onStream) {
-  if (!accessToken) return null;
-
-  const useBackend = Boolean(AI_BACKEND_URL);
-  const url = useBackend
-    ? `${AI_BACKEND_URL}${onStream ? "?stream=1" : ""}`
-    : `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:${onStream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
+  const url = `${AI_BACKEND_URL}${onStream ? "?stream=1" : ""}`;
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
@@ -373,26 +242,14 @@ async function callAI(prompt, onStream) {
   };
 
   try {
-    const headers = {
-      "Content-Type": "application/json",
-    };
-
-    if (!useBackend) {
-      headers.Authorization = "Bearer " + accessToken;
-    }
-
     const res = await fetch(url, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      if (res.status === 401) {
-        showNotif("Session Expired", "Please sign in again");
-        logout();
-      }
       console.error("[Gemini]", res.status, errText);
       return null;
     }
@@ -444,8 +301,7 @@ async function streamGeminiSSE(response, onChunk) {
 }
 
 // ─── Streaming generation ───────────────────────────────────────────
-async function streamApp(id, desc) {
-  if (!accessToken) return null;
+async function streamApp(id, desc, onProgress) {
   const prompt = buildPrompt(desc);
 
   try {
@@ -453,6 +309,7 @@ async function streamApp(id, desc) {
 
     const onChunk = (text) => {
       fullText = text;
+      if (onProgress) onProgress(text);
     };
 
     const result = await callAI(prompt, onChunk);
@@ -469,7 +326,6 @@ async function streamApp(id, desc) {
 }
 
 async function genWithAI(desc) {
-  if (!accessToken) return null;
   try {
     return await callAI(buildPrompt(desc), null);
   } catch (e) {
@@ -818,6 +674,7 @@ function iconFor(n) {
   if (l.includes("weather")) return "🌤️";
   if (l.includes("chat") || l.includes("ai") || l.includes("assistant"))
     return "💬";
+  if (l.includes("radio") || l.includes("garden")) return "📻";
   if (l.includes("music") || l.includes("player") || l.includes("sound"))
     return "🎵";
   if (l.includes("convert") || l.includes("unit")) return "📏";
@@ -879,14 +736,27 @@ async function openApp(desc) {
     body.style.display = "flex";
     body.style.alignItems = "center";
     body.style.justifyContent = "center";
-    body.innerHTML = `<div style="text-align:center;padding:32px">
-  <div style="font-size:32px;color:var(--accent);margin-bottom:12px;animation:buildPulse 1.5s ease-in-out infinite">✦</div>
-  <div style="font-size:14px;color:var(--text2);font-weight:500;margin-bottom:4px">${htmlEscape(d)}</div>
-  <div style="margin-top:8px;font-size:11px;color:#555">building...</div>
+    body.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;gap:14px">
+  <div style="width:44px;height:44px;border:3px solid rgba(124,58,237,0.15);border-top-color:#7c3aed;border-right-color:#a78bfa;border-radius:50%;animation:buildSpin 0.8s cubic-bezier(0.4,0,0.2,1) infinite"></div>
+  <div style="font-size:16px;font-weight:500;color:#e8e8f0">${htmlEscape(d)}</div>
+  <div id="build-st-${id}" style="font-size:12px;color:#9898b0;min-height:18px">Generating...</div>
+  <div id="build-pv-${id}" style="width:100%;max-width:480px;max-height:180px;overflow:auto;background:rgba(0,0,0,0.3);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;color:#707090;display:none"></div>
 </div>`;
   }
 
-  const raw = (await streamApp(id, d)) || (await genWithAI(d));
+  const raw =
+    (await streamApp(id, d, (txt) => {
+      const el = document.getElementById("build-pv-" + id);
+      const st = document.getElementById("build-st-" + id);
+      if (!el || !st) return;
+      el.style.display = "block";
+      let clean = txt
+        .replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
+        .replace(/```[\w]*\n?/g, "");
+      el.textContent = clean.length > 1200 ? "…\n" + clean.slice(-1200) : clean;
+      el.scrollTop = el.scrollHeight;
+      st.textContent = "Generating...";
+    })) || (await genWithAI(d));
   const cleaned = raw
     ? raw
         .replace(/^\s*```[\w]*\n?|```\s*$/g, "")
@@ -1042,7 +912,6 @@ function showWelcome() {
   <p style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6">
     A web-based operating system where every app is generated
     <br>by AI on demand — powered by Google Gemini.
-    ${userProfile ? `<br><span style="color:var(--accent);font-size:12px">Signed in as ${htmlEscape(userProfile)}</span>` : ""}
   </p>
   <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px">
     <div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);padding:12px 16px;border-radius:var(--radius-sm);text-align:left">
@@ -1055,7 +924,7 @@ function showWelcome() {
     </div>
     <div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);padding:12px 16px;border-radius:var(--radius-sm);text-align:left">
       <span style="font-size:20px;flex-shrink:0">☁️</span>
-      <div><strong style="font-size:13px">Cloud-powered AI</strong><br><span style="font-size:12px;color:var(--text2)">Apps are generated by Google Gemini. <button onclick="logout()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0;text-decoration:underline">Sign out</button> to switch accounts.</span></div>
+      <div><strong style="font-size:13px">Cloud-powered AI</strong><br><span style="font-size:12px;color:var(--text2)">Apps are generated by Google Gemini via the cloud API backend.</span></div>
     </div>
   </div>
   <button onclick="cW('${id}')" style="margin-top:20px;padding:10px 32px;border:none;border-radius:var(--radius-sm);background:var(--accent);color:#fff;font-size:14px;cursor:pointer">Get Started</button>
@@ -1070,7 +939,7 @@ function showAbout() {
   o.onclick = (e) => {
     if (e.target === o) o.remove();
   };
-  o.innerHTML = `<div class="ab-b"><h1>✦</h1><h2>Infinite OS</h2><p>A web operating system where every app is generated by AI on demand.</p><p style="font-size:12px;opacity:.4">AI: Google Gemini (cloud)<br>${userProfile ? "Signed in as " + htmlEscape(userProfile) + "<br>" : ""}v1.1.0</p><button onclick="this.closest('.ab-o').remove()">Close</button></div>`;
+  o.innerHTML = `<div class="ab-b"><h1>✦</h1><h2>Infinite OS</h2><p>A web operating system where every app is generated by AI on demand.</p><p style="font-size:12px;opacity:.4">AI: Google Gemini (cloud)<br>v1.1.0</p><button onclick="this.closest('.ab-o').remove()">Close</button></div>`;
   document.body.appendChild(o);
 }
 
@@ -1094,85 +963,30 @@ function dismissBoot() {
   }, 700);
 }
 
-function showLoginScreen() {
-  document.getElementById("login-overlay").classList.remove("hide");
-
-  const btnIcon = document.getElementById("login-btn-icon");
-  const btnText = document.getElementById("login-btn-text");
-  const desc = document.getElementById("login-desc");
-
-  btnIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>`;
-  btnText.textContent = "Sign in with Google";
-  desc.textContent =
-    "Sign in with your Google account to use AI-powered app generation";
-
-  if (!GOOGLE_CLIENT_ID) {
-    document.getElementById("login-status").innerHTML =
-      '⚠️ Google Client ID not configured. <a href="#" onclick="showSetupInstructions();return false" style="color:var(--accent)">Set it up</a>';
-  }
-}
-
+createStars();
+playStartupSound();
 clock();
 setInterval(clock, 1000);
 console.log("✦ Infinite OS loaded");
 
-// Boot sequence
-setTimeout(async () => {
-  if (AI_BACKEND_URL) {
-    accessToken = "backend";
-    userProfile = "User";
-    userPicture = "";
-    bootMsg("Backend AI ready", 100);
-    setTimeout(() => {
-      dismissBoot();
-      setTimeout(authComplete, 100);
-    }, 400);
-    return;
+// Boot sequence — phased loading with progress
+const bootPhases = [
+  { msg: "Loading kernel modules...", pct: 15, delay: 600 },
+  { msg: "Starting AI engine...", pct: 35, delay: 1200 },
+  { msg: "Connecting to Gemini...", pct: 60, delay: 1800 },
+  { msg: "Preparing desktop...", pct: 85, delay: 2400 },
+  { msg: "Backend AI ready", pct: 100, delay: 3000 },
+];
+
+bootPhases.forEach(({ msg, pct, delay }) => {
+  setTimeout(() => bootMsg(msg, pct), delay);
+});
+
+setTimeout(() => {
+  dismissBoot();
+  if (!_welcomed) {
+    _welcomed = true;
+    setTimeout(showWelcome, 300);
   }
-
-  // Check for saved session
-  const savedToken = localStorage.getItem("io_token");
-  const savedUser = localStorage.getItem("io_user");
-  const savedExpires = localStorage.getItem("io_expires");
-  const savedProvider = localStorage.getItem("io_provider");
-  const savedScope = localStorage.getItem("io_scope");
-
-  if (savedToken && savedScope && savedScope !== GEMINI_OAUTH_SCOPE) {
-    localStorage.removeItem("io_token");
-    localStorage.removeItem("io_user");
-    localStorage.removeItem("io_expires");
-    localStorage.removeItem("io_provider");
-    localStorage.removeItem("io_scope");
-  }
-
-  if (
-    savedToken &&
-    savedUser &&
-    savedExpires &&
-    savedProvider === "google" &&
-    savedScope === GEMINI_OAUTH_SCOPE
-  ) {
-    if (parseInt(savedExpires) > Date.now()) {
-      accessToken = savedToken;
-      const u = JSON.parse(savedUser);
-      userProfile = u.name;
-      userPicture = u.picture;
-      bootMsg("Restored session", 70);
-      bootMsg("Ready", 100);
-      setTimeout(() => {
-        dismissBoot();
-        if (!_welcomed) {
-          _welcomed = true;
-          setTimeout(showWelcome, 300);
-        }
-      }, 400);
-      return;
-    }
-  }
-
-  bootMsg("Sign in required", 100);
-  setTimeout(() => {
-    dismissBoot();
-    setTimeout(showLoginScreen, 300);
-  }, 500);
-}, 1500);
+  updTB();
+}, 3500);
