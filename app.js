@@ -17,6 +17,15 @@ const APP_SPEC = `You are an expert HTML/CSS/JS developer. Build a polished, fea
 First, think through the requirements inside <thinking> tags. Then output the complete HTML code.
 
 ---
+CRITICAL RULES — read these first
+---
+- Build ONLY what the user asks for. Do NOT add extra features, dashboards, or information panels they did not request.
+- FORBIDDEN: Do NOT build a system monitor, system information, hardware status, diagnostic tool, device info panel, battery status, performance monitor, or about-this-device app unless the user EXPLICITLY asks for one.
+- FORBIDDEN: Do NOT display OS version, platform, memory, CPU cores, battery, or any system metrics unless the app is specifically about system information.
+- Use only the OS APIs that are directly relevant to the requested app. Ignore the rest.
+- If the user asks for something simple (calculator, todo list, notes, paint, clock), build exactly that. Do not inflate it with unrelated features.
+
+---
 REQUIREMENTS
 ---
 - Start your app with <div class="app-{name}"> as the root container element.
@@ -157,14 +166,10 @@ os.fs.quota()                 → Promise<{usage,quota}> or null
 === Notifications ===
 os.notify(title,message)      → show toast notification
 
-=== Theme ===
-os.theme                      → "dark" (always)
-os.randomColor()              → random accent hex from the palette
-
 === Launch Apps ===
 os.openApp(description)       → launch (or focus) an app by name
 
-Build something impressive, fully functional, and beautifully styled.`;
+Remember: build ONLY what the user requested. Do not add system info, hardware stats, or unrelated features. Keep it focused and polished.`;
 
 function templateReference(desc) {
   if (typeof genTemplate !== "function") return "";
