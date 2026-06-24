@@ -26,6 +26,7 @@ REQUIREMENTS
 - Scoped CSS: prefix all selectors with .app-{name} to avoid conflicts.
 - You MAY use <iframe> to embed external content (maps, charts, videos, web widgets, music services like https://radio.garden/, etc.) — set allow="*" and sandbox as needed. This is great for rich data visualizations or embedded services.
 - For games: render a proper UI with score, controls, restart button, and visual polish.
+- CRITICAL for games: use DELTA TIME for all movement, physics, and animation logic. Multiply speeds/velocities by dt (the time elapsed since the last frame) so the game runs at the same speed regardless of frame rate. Use requestAnimationFrame's timestamp parameter to compute dt. Do NOT rely on fixed timesteps or assume a constant frame rate.
 - Do NOT use external resources, CDN links, or external images. Everything must be inline.
 
 ---
@@ -41,19 +42,98 @@ You MUST make your app fill and adapt to the available space:
 - What NOT to do: do NOT set a fixed width/height on the outer container; do NOT assume the window is always the same size; do NOT center a small box in the middle of a huge space without filling the rest.
 
 ---
-AVAILABLE OS APIs (use these to make your app feel native & persistent)
+AVAILABLE OS APIs — use these! Your app calls them via window.os.*
 ---
-os.notify(title, message)       — Show a notification toast
-os.fs.read(key)                 — Read saved data (returns string or null)
-os.fs.write(key, value)         — Save/ persist data
-os.fs.list()                    — List all saved files [{key, size}]
-os.fs.delete(key)               — Delete saved data
-os.openApp(description)         — Launch another app by name
-theme = os.theme                — Current theme ("dark")
-color = os.randomColor()        — Random accent color from the OS palette
-os.window.title = "..."         — Change the window title
-os.window.icon = "..."          — Change the window icon
-os.window.resize(w, h)          — Resize the window
+
+=== Display & System ===
+os.version                    → "1.2.0" — OS version string
+os.screen.size                → {w,h} — full screen dimensions
+os.screen.availSize           → {w,h} — usable screen area (excludes taskbar)
+os.system.online              → boolean — browser online status
+os.system.platform            → "web"
+os.system.language            → browser language e.g. "en-US"
+os.system.memory              → device RAM in GB (or null)
+os.system.cores               → CPU logical cores (or null)
+os.system.battery()           → Promise<{level,charging}> — battery info
+
+=== Current App Window ===
+os.window.title               → get/set the window title bar
+os.window.icon                → get/set the window icon emoji
+os.window.size                → {w,h} — current dimensions
+os.window.resize(w,h)         → resize window (min 300×200)
+
+=== All Windows ===
+os.windows.list()             → [{id,title,icon}] — all open windows
+os.windows.focus(id)          → bring window to front
+os.windows.close(id)          → close a window
+os.windows.minimize(id)       → toggle minimize
+os.windows.maximize(id)       → toggle maximize
+
+=== Clipboard ===
+os.clipboard.write(text)      → Promise — copy to system clipboard
+os.clipboard.read()           → Promise<string> — paste from clipboard
+
+=== Dialogs (native OS popups) ===
+os.dialog.alert(msg)          → show message alert
+t = os.dialog.confirm(msg)    → true/false prompt
+t = os.dialog.prompt(msg,def) → string or null
+
+=== Audio / Sound ===
+os.audio.beep()               → short beep sound
+os.audio.notify()             → notification chime
+
+=== Location / GPS ===
+loc = await os.location.current() → {lat,lng,accuracy} or null
+
+=== Crypto / Random ===
+uid = os.crypto.uuid()        → random UUID v4 string
+arr = os.crypto.bytes(n)      → Uint8Array of n random bytes
+
+=== Sharing ===
+ok = await os.share(title,text,url) → Web Share API
+
+=== Date / Time ===
+os.date.now()                 → ISO 8601 timestamp
+os.date.format(locale,opts)   → formatted date string
+os.date.timezone              → IANA timezone string
+
+=== Shell / OS Actions ===
+os.shell.openUrl(url)          → open URL in new tab
+file = await os.shell.openFile(accept?) → Promise<{name,type,size,dataUrl}> or null
+os.shell.saveFile(name,url)    → trigger file download
+
+=== OS Settings (persistent theming) ===
+val = os.settings.get(key)     → get a setting (accent, wallpaper, wallpaperBlur, wallpaperDim)
+os.settings.set(key,val)      → change a setting (saves + applies instantly)
+os.settings.getAll()           → {accent, wallpaper, wallpaperBlur, wallpaperDim} all current values
+os.settings.reset()            → restore all defaults
+os.settings.onChange(fn)       → subscribe to setting changes: fn(key, value) called on every set()
+os.settings.offChange(fn)      → unsubscribe
+
+Available settings:
+  accent         → hex color for the OS accent (e.g. "#ff6b6b") — changes instantly
+  wallpaper      → URL string for desktop wallpaper image, or "" for none
+  wallpaperBlur  → blur amount in pixels for the wallpaper (0 = no blur)
+  wallpaperDim   → darkness overlay opacity 0-1 for wallpaper readability
+
+=== Persistent Storage ===
+os.fs.read(key)               → string or null
+os.fs.write(key,val)          → boolean (true = saved)
+os.fs.list()                  → [{key,size}]
+os.fs.delete(key)             → boolean
+os.fs.exists(key)             → boolean — key exists?
+os.fs.size(key)               → number of chars (or -1)
+os.fs.quota()                 → Promise<{usage,quota}> or null
+
+=== Notifications ===
+os.notify(title,message)      → show toast notification
+
+=== Theme ===
+os.theme                      → "dark" (always)
+os.randomColor()              → random accent hex from the palette
+
+=== Launch Apps ===
+os.openApp(description)       → launch (or focus) an app by name
 
 Build something impressive, fully functional, and beautifully styled.`;
 
@@ -339,6 +419,10 @@ async function genWithAI(desc) {
 // ═══════════════════════════════════════════════════════════════════════
 
 window.os = {
+  // ─── OS Version ────────────────────────────────────────────────
+  version: "1.2.0",
+
+  // ─── Current App Window ───────────────────────────────────────
   window: {
     _id: null,
     get title() {
@@ -371,11 +455,320 @@ window.os = {
       resizeWin(this._id, w, h);
     },
   },
+
+  // ─── Screen Info ──────────────────────────────────────────────
+  screen: {
+    get size() {
+      return { w: screen.width, h: screen.height };
+    },
+    get availSize() {
+      return { w: screen.availWidth, h: screen.availHeight };
+    },
+  },
+
+  // ─── System Info ──────────────────────────────────────────────
+  system: {
+    get online() {
+      return navigator.onLine;
+    },
+    get platform() {
+      return "web";
+    },
+    get language() {
+      return navigator.language || "en-US";
+    },
+    get memory() {
+      return navigator.deviceMemory || null;
+    },
+    get cores() {
+      return navigator.hardwareConcurrency || null;
+    },
+    async battery() {
+      if (!navigator.getBattery) return null;
+      try {
+        const b = await navigator.getBattery();
+        return { level: b.level, charging: b.charging };
+      } catch {
+        return null;
+      }
+    },
+  },
+
+  // ─── All Windows Management ───────────────────────────────────
+  windows: {
+    list() {
+      return Object.values(S.windows).map((w) => ({
+        id: w.id,
+        title: w.title,
+        icon: w.icon,
+      }));
+    },
+    focus(id) {
+      focusWin(id);
+    },
+    close(id) {
+      cW(id);
+    },
+    minimize(id) {
+      mW(id);
+    },
+    maximize(id) {
+      MW(id);
+    },
+  },
+
+  // ─── Clipboard ────────────────────────────────────────────────
+  clipboard: {
+    async write(text) {
+      try {
+        await navigator.clipboard.writeText(String(text));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async read() {
+      try {
+        return await navigator.clipboard.readText();
+      } catch {
+        return null;
+      }
+    },
+  },
+
+  // ─── Native Dialogs ───────────────────────────────────────────
+  dialog: {
+    alert(msg) {
+      alert(msg);
+    },
+    confirm(msg) {
+      return confirm(msg);
+    },
+    prompt(msg, def) {
+      return prompt(msg, def ?? "");
+    },
+  },
+
+  // ─── Audio / Sound ────────────────────────────────────────────
+  audio: {
+    beep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 800;
+        g.gain.setValueAtTime(0.1, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.connect(g).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      } catch {}
+    },
+    notify() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = ctx.currentTime;
+        [880, 1100].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          g.gain.setValueAtTime(0, now + i * 0.08);
+          g.gain.linearRampToValueAtTime(0.08, now + i * 0.08 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.15);
+          osc.connect(g).connect(ctx.destination);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.2);
+        });
+      } catch {}
+    },
+  },
+
+  // ─── Geolocation ──────────────────────────────────────────────
+  location: {
+    current() {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          resolve(null);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) =>
+            resolve({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+            }),
+          () => resolve(null),
+          { timeout: 5000, enableHighAccuracy: false },
+        );
+      });
+    },
+  },
+
+  // ─── Crypto / Random ──────────────────────────────────────────
+  crypto: {
+    uuid() {
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === "x" ? r : (r & 3) | 8).toString(16);
+      });
+    },
+    bytes(n) {
+      const a = new Uint8Array(n);
+      crypto.getRandomValues(a);
+      return a;
+    },
+  },
+
+  // ─── Web Share ────────────────────────────────────────────────
+  async share(title, text, url) {
+    if (!navigator.share) return false;
+    try {
+      await navigator.share({
+        title: title || "",
+        text: text || "",
+        url: url || "",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  // ─── Date / Time ──────────────────────────────────────────────
+  date: {
+    now() {
+      return new Date().toISOString();
+    },
+    format(locale, opts) {
+      return new Date().toLocaleString(locale || undefined, opts || {});
+    },
+    get timezone() {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+      } catch {
+        return "UTC";
+      }
+    },
+  },
+
+  // ─── Shell / OS Actions ───────────────────────────────────────
+  shell: {
+    openUrl(url) {
+      window.open(url, "_blank", "noopener");
+    },
+    openFile(accept) {
+      return new Promise((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        if (accept) input.accept = accept;
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (!file) {
+            resolve(null);
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              dataUrl: reader.result,
+            });
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        };
+        input.click();
+      });
+    },
+    saveFile(filename, dataUrl) {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename || "download";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    },
+  },
+
+  // ─── OS Settings (persistent theming) ────────────────────────
+  settings: {
+    _data: null,
+    _lsKey: "io_settings",
+    _load() {
+      if (this._data) return;
+      try {
+        const r = localStorage.getItem(this._lsKey);
+        this._data = r ? JSON.parse(r) : {};
+      } catch {
+        this._data = {};
+      }
+    },
+    _save() {
+      try {
+        localStorage.setItem(this._lsKey, JSON.stringify(this._data));
+      } catch {}
+    },
+    _notify(k, v) {
+      if (this._listeners) this._listeners.forEach((fn) => fn(k, v));
+    },
+    get(key, def) {
+      this._load();
+      const D = {
+        accent: "#7c3aed",
+        wallpaper: "",
+        wallpaperBlur: 0,
+        wallpaperDim: 0.5,
+      };
+      return this._data[key] !== undefined
+        ? this._data[key]
+        : def !== undefined
+          ? def
+          : D[key];
+    },
+    set(key, val) {
+      this._load();
+      this._data[key] = val;
+      this._save();
+      applySettings();
+      this._notify(key, val);
+    },
+    getAll() {
+      this._load();
+      const D = {
+        accent: "#7c3aed",
+        wallpaper: "",
+        wallpaperBlur: 0,
+        wallpaperDim: 0.5,
+      };
+      return { ...D, ...this._data };
+    },
+    reset() {
+      this._data = {};
+      this._save();
+      applySettings();
+      this._notify("__reset__", null);
+    },
+    onChange(fn) {
+      this._load();
+      if (!this._listeners) this._listeners = [];
+      this._listeners.push(fn);
+    },
+    offChange(fn) {
+      if (!this._listeners) return;
+      this._listeners = this._listeners.filter((f) => f !== fn);
+    },
+  },
+
+  // ─── Persistent Storage (fs) ──────────────────────────────────
   fs: {
     read(k) {
       try {
         return localStorage.getItem("io_" + k);
-      } catch (e) {
+      } catch {
         return null;
       }
     },
@@ -383,7 +776,7 @@ window.os = {
       try {
         localStorage.setItem("io_" + k, String(v));
         return true;
-      } catch (e) {
+      } catch {
         return false;
       }
     },
@@ -400,17 +793,43 @@ window.os = {
       try {
         localStorage.removeItem("io_" + k);
         return true;
-      } catch (e) {
+      } catch {
         return false;
       }
     },
+    exists(k) {
+      return localStorage.getItem("io_" + k) !== null;
+    },
+    size(k) {
+      try {
+        const v = localStorage.getItem("io_" + k);
+        return v ? v.length : -1;
+      } catch {
+        return -1;
+      }
+    },
+    async quota() {
+      if (!navigator.storage?.estimate) return null;
+      try {
+        const e = await navigator.storage.estimate();
+        return { usage: e.usage, quota: e.quota };
+      } catch {
+        return null;
+      }
+    },
   },
+
+  // ─── Notifications ────────────────────────────────────────────
   notify(t, m) {
     showNotif(t, m);
   },
+
+  // ─── Theme ────────────────────────────────────────────────────
   get theme() {
     return "dark";
   },
+
+  // ─── Random Color ─────────────────────────────────────────────
   randomColor() {
     const c = [
       "#7c3aed",
@@ -426,6 +845,8 @@ window.os = {
     ];
     return c[Math.floor(Math.random() * c.length)];
   },
+
+  // ─── Launch Apps ──────────────────────────────────────────────
   openApp(d) {
     openApp(d);
   },
@@ -648,10 +1069,32 @@ body{overflow:auto}button,input,textarea,select{font:inherit}
   const parentOs = parent.os;
   const withWindow = (fn) => { const previous = parentOs.window._id; parentOs.window._id = appId; try { return fn(); } finally { parentOs.window._id = previous; } };
   window.os = {
-    fs: parentOs.fs, notify: (...args) => parentOs.notify(...args),
-    get theme() { return parentOs.theme; }, randomColor: () => parentOs.randomColor(),
+    version: parentOs.version,
+    screen: parentOs.screen,
+    system: parentOs.system,
+    windows: parentOs.windows,
+    clipboard: parentOs.clipboard,
+    dialog: parentOs.dialog,
+    audio: parentOs.audio,
+    location: parentOs.location,
+    crypto: parentOs.crypto,
+    date: parentOs.date,
+    shell: parentOs.shell,
+    settings: parentOs.settings,
+    fs: parentOs.fs,
+    notify: (...args) => parentOs.notify(...args),
+    get theme() { return parentOs.theme; },
+    randomColor: () => parentOs.randomColor(),
+    async share(...args) { return parentOs.share(...args); },
     openApp: (desc) => parentOs.openApp(desc),
-    window: { _id: appId, get title() { return withWindow(() => parentOs.window.title); }, set title(v) { withWindow(() => { parentOs.window.title = v; }); }, get icon() { return withWindow(() => parentOs.window.icon); }, set icon(v) { withWindow(() => { parentOs.window.icon = v; }); }, get size() { return withWindow(() => parentOs.window.size); }, resize: (w, h) => withWindow(() => parentOs.window.resize(w, h)) },
+    window: { _id: appId,
+      get title() { return withWindow(() => parentOs.window.title); },
+      set title(v) { withWindow(() => { parentOs.window.title = v; }); },
+      get icon() { return withWindow(() => parentOs.window.icon); },
+      set icon(v) { withWindow(() => { parentOs.window.icon = v; }); },
+      get size() { return withWindow(() => parentOs.window.size); },
+      resize: (w, h) => withWindow(() => parentOs.window.resize(w, h))
+    },
   };
 })();
 </script>
@@ -766,6 +1209,7 @@ async function openApp(desc) {
 
   if (html) {
     appCache[id] = html;
+    saveApp(id, d, html);
     renderApp(id, d, html);
   } else {
     renderApp(id, d, generationErrorHTML(d));
@@ -779,8 +1223,311 @@ function addDI(id, name, emoji) {
   el.className = "desktop-icon";
   el.id = "di-" + id;
   el.ondblclick = () => openApp(name);
+  el.oncontextmenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.querySelectorAll(".di-ctx").forEach((m) => m.remove());
+    const menu = document.createElement("div");
+    menu.className = "di-ctx";
+    Object.assign(menu.style, {
+      position: "fixed",
+      left: e.clientX + "px",
+      top: e.clientY + "px",
+      zIndex: "500",
+      background: "var(--bg2)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius)",
+      boxShadow: "var(--shadow)",
+      padding: "4px",
+      minWidth: "140px",
+      backdropFilter: "blur(20px)",
+    });
+    menu.style.minWidth = "160px";
+    menu.innerHTML =
+      `<div class="di-ctx-i" data-action="props" style="padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;gap:8px;transition:background var(--transition);margin-bottom:2px">⚙️ Properties</div>` +
+      `<div style="height:1px;background:var(--border);margin:4px 8px"></div>` +
+      `<div class="di-ctx-i" data-action="del" style="padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;gap:8px;transition:background var(--transition)">🗑️ Uninstall</div>`;
+    menu.querySelector("[data-action=props]").onclick = () => {
+      showAppProperties(id);
+      menu.remove();
+    };
+    menu.querySelector("[data-action=del]").onclick = () => {
+      uninstallApp(id);
+      menu.remove();
+    };
+    document.body.appendChild(menu);
+    setTimeout(() => {
+      const close = (ev) => {
+        if (!menu.contains(ev.target)) {
+          menu.remove();
+          document.removeEventListener("click", close);
+        }
+      };
+      document.addEventListener("click", close);
+    }, 0);
+  };
   el.innerHTML = `<div class="icon-emoji">${emoji || "📱"}</div><div class="icon-label">${name}</div>`;
   document.getElementById("desktop-icons").appendChild(el);
+}
+
+// ─── Persistent App Cache (survives refresh) ──────────────────────────
+
+function saveApp(id, name, html) {
+  try {
+    localStorage.setItem("io_app_" + id, html);
+    const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
+    if (!index.find((e) => e.id === id)) {
+      index.push({ id, name, icon: iconFor(name) });
+      localStorage.setItem("io_app_index", JSON.stringify(index));
+    }
+  } catch (e) {}
+}
+
+function loadSavedApps() {
+  try {
+    const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
+    for (const entry of index) {
+      const html = localStorage.getItem("io_app_" + entry.id);
+      if (html) {
+        appCache[entry.id] = html;
+        addDI(entry.id, entry.name, entry.icon);
+      }
+    }
+  } catch (e) {}
+}
+
+function uninstallApp(id) {
+  try {
+    const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
+    const entry = index.find((e) => e.id === id);
+    const name = entry ? entry.name : id;
+    const filtered = index.filter((e) => e.id !== id);
+    localStorage.setItem("io_app_index", JSON.stringify(filtered));
+    localStorage.removeItem("io_app_" + id);
+    delete appCache[id];
+    const di = document.getElementById("di-" + id);
+    if (di) di.remove();
+    if (S.windows[id]) cW(id);
+    showNotif("🗑️ Uninstalled", '"' + name + '" has been removed');
+  } catch (e) {}
+}
+
+// ─── Desktop Icon Helpers ─────────────────────────────────────────────
+
+function updateDI(id, name, emoji) {
+  const el = document.getElementById("di-" + id);
+  if (!el) return;
+  el.innerHTML = `<div class="icon-emoji">${emoji || "📱"}</div><div class="icon-label">${name}</div>`;
+  el.ondblclick = () => openApp(name);
+}
+
+// ─── App Properties Window ────────────────────────────────────────────
+
+function showAppProperties(id) {
+  const winId = "_props_" + id;
+  if (S.windows[winId]) {
+    focusWin(winId);
+    return;
+  }
+
+  const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
+  const entry = index.find((e) => e.id === id);
+  const currentName = entry
+    ? entry.name
+    : S.windows[id]
+      ? S.windows[id].title
+      : id;
+  const currentIcon = entry ? entry.icon : iconFor(currentName);
+
+  let htmlSize = 0;
+  try {
+    const h = localStorage.getItem("io_app_" + id);
+    if (h) htmlSize = h.length;
+  } catch {}
+
+  createWin(winId, "⚙️ " + currentName + " Properties", "⚙️", 380, 370);
+  const body = document.getElementById("wb-" + winId);
+  if (!body) return;
+  body.style.overflow = "auto";
+
+  const emojiStrip = [
+    "📱",
+    "🧮",
+    "✅",
+    "📝",
+    "🎨",
+    "🕐",
+    "🌤️",
+    "💬",
+    "📻",
+    "🎵",
+    "❌",
+    "📏",
+    "🎮",
+    "📊",
+    "🔧",
+    "🗂️",
+    "🖼️",
+    "🔒",
+    "⚡",
+    "🎯",
+    "📦",
+    "🌐",
+    "🧩",
+    "💾",
+  ];
+
+  body.innerHTML =
+    `<div style="padding:20px;font-family:system-ui,sans-serif;height:100%;display:flex;flex-direction:column">
+  <div style="text-align:center;margin-bottom:12px">
+    <div id="pv-em-${winId}" style="font-size:48px;margin-bottom:4px">${currentIcon}</div>
+  </div>
+  <div style="margin-bottom:10px">
+    <label style="display:block;font-size:11px;color:var(--text2);margin-bottom:3px">Icon (emoji)</label>
+    <input id="pi-${winId}" value="${currentIcon}" maxlength="4" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:16px;text-align:center;outline:none" oninput="document.getElementById('pv-em-${winId}').textContent=this.value||'📱'">
+    <div style="display:flex;gap:3px;margin-top:5px;flex-wrap:wrap;justify-content:center">` +
+    emojiStrip
+      .map(
+        (e) =>
+          `<span data-em="${e}" onclick="document.getElementById('pi-${winId}').value='${e}';document.getElementById('pv-em-${winId}').textContent='${e}'" style="cursor:pointer;font-size:18px;padding:2px 5px;border-radius:4px" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background=''">${e}</span>`,
+      )
+      .join("") +
+    `</div>
+  </div>
+  <div style="margin-bottom:10px">
+    <label style="display:block;font-size:11px;color:var(--text2);margin-bottom:3px">App name</label>
+    <input id="pn-${winId}" value="${htmlEscape(currentName)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:14px;outline:none">
+  </div>
+  <div style="margin-bottom:12px;padding:8px 10px;background:var(--surface);border-radius:6px;font-size:11px;color:var(--text2);line-height:1.5">
+    <b>App ID:</b> ${htmlEscape(id)}<br>
+    <b>Storage:</b> ${htmlSize > 0 ? (htmlSize / 1024).toFixed(1) + " KB" : "Not saved"}
+  </div>
+  <div style="margin-top:auto;display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border)">
+    <button onclick="cW('${winId}')" style="padding:8px 20px;border:none;border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;cursor:pointer">Cancel</button>
+    <button onclick="saveAppProperties('${id}','${winId}')" style="padding:8px 20px;border:none;border-radius:6px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer">Save</button>
+  </div>
+</div>`;
+}
+
+function saveAppProperties(id, winId) {
+  const nameInp = document.getElementById("pn-" + winId);
+  const iconInp = document.getElementById("pi-" + winId);
+  if (!nameInp || !iconInp) return;
+  const newName = nameInp.value.trim() || id;
+  const newIcon = iconInp.value.trim() || "📱";
+
+  try {
+    const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
+    const entry = index.find((e) => e.id === id);
+    if (entry) {
+      entry.name = newName;
+      entry.icon = newIcon;
+    }
+    localStorage.setItem("io_app_index", JSON.stringify(index));
+  } catch {}
+
+  updateDI(id, newName, newIcon);
+
+  const win = S.windows[id];
+  if (win) {
+    win.title = newName;
+    win.icon = newIcon;
+    updTitle(id);
+  }
+
+  cW(winId);
+  showNotif("⚙️ Properties", 'Updated "' + newName + '"');
+}
+
+// ─── Theme / Settings Application ────────────────────────────────────
+
+function darkenColor(hex, amount) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const nr = Math.max(0, Math.floor(r * (1 - amount)));
+  const ng = Math.max(0, Math.floor(g * (1 - amount)));
+  const nb = Math.max(0, Math.floor(b * (1 - amount)));
+  return (
+    "#" + [nr, ng, nb].map((c) => c.toString(16).padStart(2, "0")).join("")
+  );
+}
+
+function applySettings() {
+  const s = window.os.settings.getAll();
+  const root = document.documentElement;
+
+  root.style.setProperty("--accent", s.accent);
+  root.style.setProperty("--accent-hover", darkenColor(s.accent, 0.15));
+
+  const desktop = document.getElementById("desktop");
+  if (!desktop) return;
+
+  const existingWp = document.getElementById("os-wallpaper");
+  const existingDim = document.getElementById("os-wallpaper-dim");
+
+  if (s.wallpaper) {
+    // Clean up any old wallpaper elements that may have been inside #desktop
+    const oldWp = desktop.querySelector("#os-wallpaper");
+    const oldDim = desktop.querySelector("#os-wallpaper-dim");
+    if (oldWp) oldWp.remove();
+    if (oldDim) oldDim.remove();
+
+    // Insert wallpaper elements as siblings BEFORE #desktop
+    // so they stack BEHIND the desktop and don't cover the icons
+    let wp = existingWp;
+    let dim = existingDim;
+    if (!wp) {
+      wp = document.createElement("div");
+      wp.id = "os-wallpaper";
+      desktop.parentNode.insertBefore(wp, desktop);
+    }
+    if (!dim) {
+      dim = document.createElement("div");
+      dim.id = "os-wallpaper-dim";
+      desktop.parentNode.insertBefore(dim, desktop);
+    }
+    // Position to same area as the desktop (above taskbar)
+    Object.assign(wp.style, {
+      position: "fixed",
+      left: "0",
+      right: "0",
+      top: "0",
+      bottom: "var(--taskbar-height)",
+      backgroundImage: "url(" + JSON.stringify(s.wallpaper) + ")",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      filter: "blur(" + (s.wallpaperBlur || 0) + "px)",
+      transition: "opacity 0.5s ease",
+      opacity: "1",
+      zIndex: "",
+      pointerEvents: "none",
+    });
+    Object.assign(dim.style, {
+      position: "fixed",
+      left: "0",
+      right: "0",
+      top: "0",
+      bottom: "var(--taskbar-height)",
+      background: "rgba(0,0,0," + (s.wallpaperDim || 0.5) + ")",
+      transition: "opacity 0.5s ease",
+      opacity: "1",
+      zIndex: "",
+      pointerEvents: "none",
+    });
+    desktop.style.background = "transparent";
+  } else {
+    if (existingWp) {
+      existingWp.style.opacity = "0";
+      setTimeout(() => existingWp.remove(), 500);
+    }
+    if (existingDim) {
+      existingDim.style.opacity = "0";
+      setTimeout(() => existingDim.remove(), 500);
+    }
+    desktop.style.background = "";
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -939,7 +1686,7 @@ function showAbout() {
   o.onclick = (e) => {
     if (e.target === o) o.remove();
   };
-  o.innerHTML = `<div class="ab-b"><h1>✦</h1><h2>Infinite OS</h2><p>A web operating system where every app is generated by AI on demand.</p><p style="font-size:12px;opacity:.4">AI: Google Gemini (cloud)<br>v1.1.0</p><button onclick="this.closest('.ab-o').remove()">Close</button></div>`;
+  o.innerHTML = `<div class="ab-b"><h1>✦</h1><h2>Infinite OS</h2><p>A web operating system where every app is generated by AI on demand.</p><p style="font-size:12px;opacity:.4">AI: Google Gemini (cloud)<br>v1.2.0</p><button onclick="this.closest('.ab-o').remove()">Close</button></div>`;
   document.body.appendChild(o);
 }
 
@@ -974,6 +1721,7 @@ const bootPhases = [
   { msg: "Loading kernel modules...", pct: 15, delay: 600 },
   { msg: "Starting AI engine...", pct: 35, delay: 1200 },
   { msg: "Connecting to Gemini...", pct: 60, delay: 1800 },
+  { msg: "Restoring saved apps...", pct: 75, delay: 2100 },
   { msg: "Preparing desktop...", pct: 85, delay: 2400 },
   { msg: "Backend AI ready", pct: 100, delay: 3000 },
 ];
@@ -981,6 +1729,9 @@ const bootPhases = [
 bootPhases.forEach(({ msg, pct, delay }) => {
   setTimeout(() => bootMsg(msg, pct), delay);
 });
+
+setTimeout(loadSavedApps, 2200);
+setTimeout(applySettings, 2400);
 
 setTimeout(() => {
   dismissBoot();
