@@ -115,6 +115,35 @@ Available settings:
   wallpaper      → URL string for desktop wallpaper image, or "" for none
   wallpaperBlur  → blur amount in pixels for the wallpaper (0 = no blur)
   wallpaperDim   → darkness overlay opacity 0-1 for wallpaper readability
+  theme          → "dark" or "light" — OS color scheme
+
+---
+THEMING — use OS CSS variables for automatic dark/light mode
+---
+Your app receives these CSS custom properties from the OS on the :root element.
+Use them throughout your CSS so your app adapts to the user's theme choice:
+
+  var(--os-bg)          → main background
+  var(--os-bg2)         → card / surface background
+  var(--os-bg3)         → elevated surface background
+  var(--os-surface)     → subtle hover / overlay
+  var(--os-surface-hover) → stronger overlay
+  var(--os-border)      → border / divider color
+  var(--os-text)        → primary text color
+  var(--os-text2)       → secondary / muted text
+  var(--os-accent)      → OS accent color (user-customizable)
+  var(--os-accent-hover) → accent hover variant
+
+Always use these variables for colors. Do NOT hardcode color values.
+
+  Example:
+    background: var(--os-bg);
+    color: var(--os-text);
+    border: 1px solid var(--os-border);
+    background: var(--os-accent);
+    color: #fff;
+
+os.theme returns "dark" or "light" so your JS can also adapt.
 
 === Persistent Storage ===
 os.fs.read(key)               → string or null
@@ -722,6 +751,7 @@ window.os = {
         wallpaper: "",
         wallpaperBlur: 0,
         wallpaperDim: 0.5,
+        theme: "dark",
       };
       return this._data[key] !== undefined
         ? this._data[key]
@@ -743,6 +773,7 @@ window.os = {
         wallpaper: "",
         wallpaperBlur: 0,
         wallpaperDim: 0.5,
+        theme: "dark",
       };
       return { ...D, ...this._data };
     },
@@ -826,7 +857,7 @@ window.os = {
 
   // ─── Theme ────────────────────────────────────────────────────
   get theme() {
-    return "dark";
+    return window.os.settings.get("theme", "dark");
   },
 
   // ─── Random Color ─────────────────────────────────────────────
@@ -1052,15 +1083,18 @@ function rz(e, id) {
 
 function appDocument(id, html) {
   const appId = JSON.stringify(id);
+  const themeCSS = getThemeCSS();
+  const colorScheme =
+    window.os.settings.get("theme", "dark") === "light" ? "light" : "dark";
   return `<!doctype html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
-:root{--bg:#0f0f1a;--bg2:#1a1a2e;--bg3:#252540;--surface:#ffffff08;--surface-hover:#ffffff14;--border:#ffffff14;--accent:#7c3aed;--accent-hover:#6d28d9;--text:#e8e8f0;--text2:#9898b0}
+:root{${themeCSS}}
 *,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;background:transparent;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color-scheme:dark}
+html,body{margin:0;width:100%;height:100%;background:transparent;color:var(--os-text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color-scheme:${colorScheme}}
 body{overflow:auto}button,input,textarea,select{font:inherit}
 </style>
 <script>
@@ -1453,12 +1487,71 @@ function darkenColor(hex, amount) {
   );
 }
 
+function getThemeCSS() {
+  const s = window.os.settings.getAll();
+  const accent = s.accent || "#7c3aed";
+  const accentHover = darkenColor(accent, 0.15);
+  if (s.theme === "light") {
+    return `--os-bg:#f5f5f7;--os-bg2:#ffffff;--os-bg3:#e8e8ed;--os-surface:rgba(0,0,0,0.03);--os-surface-hover:rgba(0,0,0,0.08);--os-border:rgba(0,0,0,0.1);--os-text:#1d1d1f;--os-text2:#6e6e73;--os-accent:${accent};--os-accent-hover:${accentHover}`;
+  }
+  return `--os-bg:#0f0f1a;--os-bg2:#1a1a2e;--os-bg3:#252540;--os-surface:rgba(255,255,255,0.03);--os-surface-hover:rgba(255,255,255,0.08);--os-border:rgba(255,255,255,0.08);--os-text:#e8e8f0;--os-text2:#9898b0;--os-accent:${accent};--os-accent-hover:${accentHover}`;
+}
+
+function syncAppThemes() {
+  const css = getThemeCSS();
+  const colorScheme =
+    window.os.settings.get("theme", "dark") === "light" ? "light" : "dark";
+  for (const id of Object.keys(S.windows)) {
+    const body = document.getElementById("wb-" + id);
+    if (!body) continue;
+    const frame = body.querySelector("iframe.app-frame");
+    if (!frame) continue;
+    try {
+      const doc = frame.contentDocument;
+      if (!doc) continue;
+      let style = doc.getElementById("os-theme-vars");
+      if (!style) {
+        style = doc.createElement("style");
+        style.id = "os-theme-vars";
+        doc.head.appendChild(style);
+      }
+      style.textContent = ":root{" + css + "}";
+      doc.documentElement.style.colorScheme = colorScheme;
+    } catch (e) {}
+  }
+}
+
 function applySettings() {
   const s = window.os.settings.getAll();
   const root = document.documentElement;
 
   root.style.setProperty("--accent", s.accent);
   root.style.setProperty("--accent-hover", darkenColor(s.accent, 0.15));
+
+  // Apply theme CSS variables on :root for the main OS UI
+  if (s.theme === "light") {
+    root.style.setProperty("--bg", "#f5f5f7");
+    root.style.setProperty("--bg2", "#ffffff");
+    root.style.setProperty("--bg3", "#e8e8ed");
+    root.style.setProperty("--surface", "rgba(0,0,0,0.03)");
+    root.style.setProperty("--surface-hover", "rgba(0,0,0,0.08)");
+    root.style.setProperty("--border", "rgba(0,0,0,0.1)");
+    root.style.setProperty("--text", "#1d1d1f");
+    root.style.setProperty("--text2", "#6e6e73");
+    root.style.colorScheme = "light";
+  } else {
+    root.style.setProperty("--bg", "#0f0f1a");
+    root.style.setProperty("--bg2", "#1a1a2e");
+    root.style.setProperty("--bg3", "#252540");
+    root.style.setProperty("--surface", "rgba(255,255,255,0.03)");
+    root.style.setProperty("--surface-hover", "rgba(255,255,255,0.08)");
+    root.style.setProperty("--border", "rgba(255,255,255,0.08)");
+    root.style.setProperty("--text", "#e8e8f0");
+    root.style.setProperty("--text2", "#9898b0");
+    root.style.colorScheme = "dark";
+  }
+
+  syncAppThemes();
 
   const desktop = document.getElementById("desktop");
   if (!desktop) return;
@@ -1526,7 +1619,10 @@ function applySettings() {
       existingDim.style.opacity = "0";
       setTimeout(() => existingDim.remove(), 500);
     }
-    desktop.style.background = "";
+    desktop.style.background =
+      s.theme === "light"
+        ? "radial-gradient(ellipse at 20% 50%, rgba(124,58,237,0.06) 0%, transparent 60%),radial-gradient(ellipse at 80% 20%, rgba(236,72,153,0.05) 0%, transparent 60%),radial-gradient(ellipse at 50% 80%, rgba(59,130,246,0.05) 0%, transparent 60%),linear-gradient(135deg, #f5f5f7 0%, #ffffff 50%, #f5f5f7 100%)"
+        : "radial-gradient(ellipse at 20% 50%, #1a1a2e88 0%, transparent 60%),radial-gradient(ellipse at 80% 20%, #2d1b6988 0%, transparent 60%),radial-gradient(ellipse at 50% 80%, #0f346088 0%, transparent 60%),linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%)";
   }
 }
 
@@ -1543,7 +1639,6 @@ function openLauncher() {
   document.getElementById("launcher").classList.remove("hide");
   setTimeout(() => document.getElementById("launcher-inp").focus(), 50);
   document.getElementById("launcher-st").textContent = "";
-  document.getElementById("launcher-sug").innerHTML = "";
 }
 
 function closeLauncher() {
@@ -1688,6 +1783,160 @@ function showAbout() {
   };
   o.innerHTML = `<div class="ab-b"><h1>✦</h1><h2>Infinite OS</h2><p>A web operating system where every app is generated by AI on demand.</p><p style="font-size:12px;opacity:.4">AI: Google Gemini (cloud)<br>v1.2.0</p><button onclick="this.closest('.ab-o').remove()">Close</button></div>`;
   document.body.appendChild(o);
+}
+
+// ─── Settings App ────────────────────────────────────────────────────
+
+function openSettings() {
+  const id = "_settings";
+  if (S.windows[id]) {
+    focusWin(id);
+    return;
+  }
+  createWin(id, "Settings", "⚙️", 500, 570);
+  const body = document.getElementById("wb-" + id);
+  if (!body) return;
+  renderSettingsBody(id, body);
+}
+
+function renderSettingsBody(id, body) {
+  const s = window.os.settings.getAll();
+  const accent = s.accent || "#7c3aed";
+  const wallpaper = s.wallpaper || "";
+  const blur = s.wallpaperBlur || 0;
+  const dim = s.wallpaperDim || 0.5;
+
+  const swatches = [
+    "#7c3aed",
+    "#ef4444",
+    "#f59e0b",
+    "#10b981",
+    "#3b82f6",
+    "#ec4899",
+    "#8b5cf6",
+    "#14b8a6",
+    "#f97316",
+    "#06b6d4",
+    "#a855f7",
+    "#22c55e",
+    "#eab308",
+    "#64748b",
+  ];
+
+  body.style.overflow = "auto";
+  body.innerHTML = `
+<div class="settings-wrap">
+  <h2>⚙️ Settings</h2>
+
+  <div class="sec">
+    <h3>Accent Color</h3>
+    <label>Choose a color</label>
+    <div class="swatch-grid">
+      ${swatches
+        .map(
+          (c) =>
+            `<span class="swatch${c === accent ? " on" : ""}" style="background:${c}" onclick="os.settings.set('accent','${c}');document.querySelector('#wb-${id} .swatch.on')?.classList.remove('on');this.classList.add('on');document.getElementById('set-hex-${id}').value='${c}'" title="${c}"></span>`,
+        )
+        .join("")}
+    </div>
+    <label>Custom hex color</label>
+    <div style="display:flex;gap:8px">
+      <input id="set-hex-${id}" type="text" value="${accent}" placeholder="#7c3aed" style="flex:1;font-family:monospace" onchange="os.settings.set('accent',this.value)">
+      <button class="btn-secondary" onclick="document.getElementById('set-hex-${id}').value=os.randomColor();os.settings.set('accent',os.randomColor())" style="padding:8px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:var(--surface);color:var(--text)">🎲 Random</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Wallpaper</h3>
+    <label>Image URL</label>
+    <input id="set-wp-${id}" type="url" value="${wallpaper}" placeholder="https://example.com/wallpaper.jpg" onchange="os.settings.set('wallpaper',this.value)">
+    <div class="wp-preview" id="wp-pv-${id}" style="${wallpaper ? "background-image:url('" + wallpaper.replace(/'/g, "\\'") + "')" : ""}"></div>
+    <button class="btn-secondary" onclick="document.getElementById('set-wp-${id}').value='';os.settings.set('wallpaper','')" style="margin-top:6px;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;background:var(--surface);color:var(--text)">Remove wallpaper</button>
+
+    <div style="margin-top:12px">
+      <label>Blur: <span id="set-blr-v-${id}">${blur}</span>px</label>
+      <div class="range-row">
+        <input type="range" min="0" max="20" value="${blur}" oninput="document.getElementById('set-blr-v-${id}').textContent=this.value;os.settings.set('wallpaperBlur',parseInt(this.value))">
+        <span>${blur}px</span>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <label>Dim: <span id="set-dim-v-${id}">${dim}</span></label>
+      <div class="range-row">
+        <input type="range" min="0" max="1" step="0.05" value="${dim}" oninput="document.getElementById('set-dim-v-${id}').textContent=parseFloat(this.value).toFixed(2);os.settings.set('wallpaperDim',parseFloat(this.value))">
+        <span>${dim}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Theme</h3>
+    <label>Appearance</label>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+      <button onclick="os.settings.set('theme','${s.theme === "light" ? "dark" : "light"}')" style="flex:1;padding:10px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);cursor:pointer;font-size:14px;transition:all var(--transition);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:500">
+        ${s.theme === "dark" ? "🌙" : "☀️"} ${s.theme === "dark" ? "Dark Mode" : "Light Mode"}
+      </button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <span onclick="os.settings.set('theme','dark')" style="flex:1;padding:8px;border-radius:var(--radius-sm);background:#0f0f1a;color:#e8e8f0;text-align:center;cursor:pointer;font-size:12px;border:2px solid ${s.theme === "dark" ? "var(--accent)" : "transparent"}">🌙 Dark</span>
+      <span onclick="os.settings.set('theme','light')" style="flex:1;padding:8px;border-radius:var(--radius-sm);background:#f5f5f7;color:#1d1d1f;text-align:center;cursor:pointer;font-size:12px;border:2px solid ${s.theme === "light" ? "var(--accent)" : "transparent"}">☀️ Light</span>
+    </div>
+    <p style="font-size:11px;color:var(--text2);margin-top:8px">Switch between dark and light appearance. Open apps will update with the new theme.</p>
+  </div>
+
+  <div class="sec">
+    <h3>System</h3>
+    <div class="btn-row">
+      <button class="btn-danger" onclick="if(confirm('Reset all settings to defaults?')){os.settings.reset();cW('${id}');openSettings();}">Reset to Defaults</button>
+    </div>
+  </div>
+</div>`;
+
+  // Live wallpaper preview when URL changes
+  const wpInput = document.getElementById("set-wp-" + id);
+  const wpPreview = document.getElementById("wp-pv-" + id);
+  if (wpInput && wpPreview) {
+    wpInput.addEventListener("input", () => {
+      const val = wpInput.value.trim();
+      wpPreview.style.backgroundImage = val
+        ? "url('" + val.replace(/'/g, "\\'") + "')"
+        : "none";
+    });
+  }
+
+  // Live range display update
+  const blrInput = body.querySelector("input[type=range][min=0][max=20]");
+  const dimInput = body.querySelector("input[type=range][min=0][max=1]");
+  if (blrInput) {
+    blrInput.addEventListener("input", () => {
+      const span = document.getElementById("set-blr-v-" + id);
+      if (span) span.textContent = blrInput.value;
+      blrInput.parentElement.querySelector("span:last-child").textContent =
+        blrInput.value;
+    });
+  }
+  if (dimInput) {
+    dimInput.addEventListener("input", () => {
+      const span = document.getElementById("set-dim-v-" + id);
+      const v = parseFloat(dimInput.value).toFixed(2);
+      if (span) span.textContent = v;
+      dimInput.parentElement.querySelector("span:last-child").textContent = v;
+    });
+  }
+}
+
+// ─── Restart OS ──────────────────────────────────────────────────────
+
+function restartOS() {
+  closeLauncher();
+  const o = document.createElement("div");
+  o.className = "ab-o";
+  o.style.zIndex = "9999";
+  o.onclick = null;
+  o.innerHTML = `<div class="ab-b"><h1>🔄</h1><h2>Restarting...</h2><p style="font-size:13px;color:var(--text2);margin-bottom:16px">Infinite OS will reload in a moment.</p><div style="width:100%;height:3px;background:#ffffff0d;border-radius:4px;overflow:hidden;margin:0 auto;max-width:200px"><div style="height:100%;width:100%;background:linear-gradient(90deg,#7c3aed,#a78bfa,#7c3aed);background-size:200% 100%;border-radius:4px;animation:barShimmer 0.8s linear infinite"></div></div></div>`;
+  document.body.appendChild(o);
+  setTimeout(() => location.reload(), 800);
 }
 
 document.addEventListener("keydown", (e) => {

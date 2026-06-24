@@ -25,7 +25,7 @@
         <!-- Windows -->
         <div id="windows-container"></div>
 
-        <!-- Launcher -->
+        <!-- Start Menu (Launcher) -->
         <div id="launcher" class="hide">
             <div id="launcher-bg" onclick="closeLauncher()"></div>
             <div id="launcher-box">
@@ -39,7 +39,7 @@
                     <input
                         id="launcher-inp"
                         type="text"
-                        placeholder="Search for any app..."
+                        placeholder="Describe any app to generate..."
                         autofocus
                         onkeydown="onLauncherKey(event)"
                     />
@@ -48,16 +48,46 @@
                     </button>
                 </div>
                 <div id="launcher-st"></div>
-                <div id="launcher-sug"></div>
-                <div
-                    style="
-                        font-size: 11px;
-                        opacity: 0.3;
-                        padding: 8px 20px;
-                        text-align: center;
-                    "
-                >
-                    AI-powered app generation
+                <div id="sm-body">
+                    <div id="sm-footer">
+                        <button
+                            class="sm-act"
+                            onclick="
+                                closeLauncher();
+                                openSettings();
+                            "
+                            title="Customize Infinite OS"
+                        >
+                            <span>⚙️</span><span>Settings</span>
+                        </button>
+                        <button
+                            class="sm-act"
+                            onclick="
+                                closeLauncher();
+                                showWelcome();
+                            "
+                            title="Welcome"
+                        >
+                            <span>✦</span><span>Welcome</span>
+                        </button>
+                        <button
+                            class="sm-act"
+                            onclick="
+                                closeLauncher();
+                                showAbout();
+                            "
+                            title="About"
+                        >
+                            <span>ℹ️</span><span>About</span>
+                        </button>
+                        <button
+                            class="sm-act"
+                            onclick="restartOS()"
+                            title="Restart OS"
+                        >
+                            <span>🔄</span><span>Reload</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -72,6 +102,7 @@
             <div onclick="openApp('notes')">📝 New Notes</div>
             <div onclick="openApp('paint')">🎨 New Paint</div>
             <div class="div"></div>
+            <div onclick="openSettings()">⚙️ Settings</div>
             <div onclick="showWelcome()">✦ Welcome</div>
             <div onclick="showAbout()">ℹ️ About Infinite OS</div>
         </div>

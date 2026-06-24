@@ -456,6 +456,195 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* ─── Start Menu (sm) ──────────────────────────────────────────── */
+#sm-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+#sm-footer {
+    display: flex;
+    gap: 2px;
+    padding: 6px 12px 8px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    justify-content: center;
+}
+.sm-act {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background var(--transition);
+    white-space: nowrap;
+}
+.sm-act:hover {
+    background: var(--surface);
+}
+.sm-act span:first-child {
+    font-size: 15px;
+}
+
+/* ─── Settings App ──────────────────────────────────────────────── */
+.settings-wrap {
+    padding: 20px;
+    overflow-y: auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.settings-wrap h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.settings-wrap .sec {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+.settings-wrap .sec h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    color: var(--text);
+}
+.settings-wrap label {
+    font-size: 12px;
+    color: var(--text2);
+    display: block;
+    margin-bottom: 5px;
+}
+.settings-wrap .swatch-grid {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.settings-wrap .swatch {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition:
+        transform var(--transition),
+        border-color var(--transition);
+    border: 2px solid transparent;
+}
+.settings-wrap .swatch:hover {
+    transform: scale(1.15);
+}
+.settings-wrap .swatch.on {
+    border-color: var(--text);
+}
+.settings-wrap input[type="text"],
+.settings-wrap input[type="url"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg3);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--transition);
+}
+.settings-wrap input[type="text"]:focus,
+.settings-wrap input[type="url"]:focus {
+    border-color: var(--accent);
+}
+.settings-wrap input[type="range"] {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--bg3);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+.settings-wrap input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg2);
+    cursor: pointer;
+}
+.settings-wrap .range-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.settings-wrap .range-row span {
+    font-size: 12px;
+    color: var(--text2);
+    min-width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.settings-wrap .wp-preview {
+    width: 100%;
+    height: 100px;
+    border-radius: var(--radius-sm);
+    background: var(--bg3);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    margin-top: 8px;
+    transition: background-image 0.3s ease;
+    border: 1px solid var(--border);
+}
+.settings-wrap .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.settings-wrap .btn-row button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background var(--transition);
+}
+.settings-wrap .btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+.settings-wrap .btn-primary:hover {
+    background: var(--accent-hover);
+}
+.settings-wrap .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+}
+.settings-wrap .btn-secondary:hover {
+    background: var(--surface-hover);
+}
+.settings-wrap .btn-danger {
+    background: #ef444444;
+    color: #f87171;
+}
+.settings-wrap .btn-danger:hover {
+    background: #ef444466;
+}
+
 /* Launcher */
 #launcher {
     position: fixed;
