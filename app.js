@@ -6,15 +6,16 @@
 const AI_BACKEND_URL = "https://gemini-proxy.niccata24.workers.dev/gemini";
 
 const AI_MODEL = "gemini-2.0-flash";
-const AI_TEMPERATURE = 0.9;
+const AI_TEMPERATURE = 0.55;
 const AI_MAX_TOKENS = 65536;
+const AI_REPAIR_TEMPERATURE = 0.25;
 
 const appCache = {};
 
 // ─── OS App Spec (fed to the AI so it knows how to build apps) ─────
-const APP_SPEC = `You are an expert HTML/CSS/JS developer. Build a polished, feature-rich, visually impressive HTML app that looks like a real desktop application.
+const APP_SPEC = `You are an expert HTML/CSS/JS developer. Build a polished, complete, fully functional HTML app that looks like a real desktop application.
 
-First, think through the requirements inside <thinking> tags. Then output the complete HTML code.
+Think through the requirements privately, then output only the complete HTML code. Do not include markdown, explanations, plans, or <thinking> tags.
 
 ---
 CRITICAL RULES — read these first
@@ -28,11 +29,16 @@ CRITICAL RULES — read these first
 ---
 REQUIREMENTS
 ---
-- Start your app with <div class="app-{name}"> as the root container element.
+- Start your app with <div class="app-{name}"> as the root container element, replacing {name} with a short lowercase slug like app-todo, app-calculator, or app-paint.
 - Everything must be self-contained inline: <style> for CSS, <script> for JS.
 - Design a rich, polished dark UI. Use gradients, shadows, border-radius, smooth transitions, proper spacing, and visual hierarchy. Make it look like a high-quality native app, not a prototype.
-- Full working JavaScript with all features, event handlers, keyboard shortcuts, error handling, and DOM updates.
-- Scoped CSS: prefix all selectors with .app-{name} to avoid conflicts.
+- Full working JavaScript with all requested features, event handlers, keyboard shortcuts where useful, error handling, state updates, and DOM updates.
+- Functionality is more important than decoration. A pretty UI with dead buttons, fake data, placeholder panels, or missing behavior is a failed app.
+- Every visible interactive control must work: buttons, inputs, sliders, selects, tabs, menus, canvases, keyboard controls, file controls, save/export actions, and reset/delete actions.
+- If the app accepts user-created data, persist it with os.fs or localStorage and load it when the app opens again.
+- If live external data is unavailable or unnecessary, provide local working behavior instead of fake static data. Clearly handle errors in the UI.
+- The app must be usable immediately after rendering; initialize all state and bind all events inside the returned code.
+- Scoped CSS: prefix all selectors with the actual app root class, such as .app-todo, to avoid conflicts.
 - You MAY use <iframe> to embed external content (maps, charts, videos, web widgets, music services like https://radio.garden/, etc.) — set allow="*" and sandbox as needed. This is great for rich data visualizations or embedded services.
 - For games: render a proper UI with score, controls, restart button, and visual polish.
 - CRITICAL for games: use DELTA TIME for all movement, physics, and animation logic. Multiply speeds/velocities by dt (the time elapsed since the last frame) so the game runs at the same speed regardless of frame rate. Use requestAnimationFrame's timestamp parameter to compute dt. Do NOT rely on fixed timesteps or assume a constant frame rate.
@@ -44,7 +50,7 @@ CRITICAL: WINDOW RESIZE / RESPONSIVE LAYOUT
 Your app lives inside an iframe that users can resize at any time by dragging the window edge or maximizing it. The iframe's width and height change dynamically.
 
 You MUST make your app fill and adapt to the available space:
-- Set the root <div class="app-{name}"> to width:100%; height:100% so it fills the iframe.
+- Set the root <div class="app-{name}"> to width:100%; height:100% so it fills the iframe, again replacing {name} with the same slug.
 - Design all layouts with flexbox, grid, or percentage-based sizing — never use fixed pixel widths on the overall layout.
 - For scrollable content, use overflow:auto on the appropriate container so content doesn't get clipped when the window shrinks.
 - Optionally use a ResizeObserver on the root element to re-render or reflow canvas/grid/tile layouts when the window dimensions change.
@@ -169,7 +175,18 @@ os.notify(title,message)      → show toast notification
 === Launch Apps ===
 os.openApp(description)       → launch (or focus) an app by name
 
-Remember: build ONLY what the user requested. Do not add system info, hardware stats, or unrelated features. Keep it focused and polished.`;
+---
+FUNCTIONAL COMPLETENESS CHECKLIST — satisfy this before outputting
+---
+1. Identify the user's core workflow and implement it end-to-end, not just the layout.
+2. Add JS behavior for every control and visible feature.
+3. Ensure changing inputs updates the UI immediately.
+4. Ensure save/load/export/import/delete/reset actions actually do something.
+5. Ensure games, timers, clocks, drawing tools, editors, calculators, converters, trackers, and media tools have real logic.
+6. Include non-empty <script> code unless the requested app is truly static or is entirely an iframe embed.
+7. Do not output TODO comments, placeholder text like "coming soon", fake buttons, inert tabs, or mock-only data.
+
+Remember: build ONLY what the user requested. Do not add system info, hardware stats, or unrelated features. Keep it focused, complete, and polished.`;
 
 function templateReference(desc) {
   if (typeof genTemplate !== "function") return "";
@@ -196,7 +213,7 @@ function buildPrompt(desc) {
 
 User request: "${desc}"
 
-Generate the complete HTML for this app. Only output the HTML code, no other text.`;
+Generate the complete, functional HTML for this app. Output exactly one root <div class="app-{name}">, replacing {name} with a short lowercase slug, with inline <style> and <script>. Only output the HTML code, no other text.`;
 }
 
 function htmlEscape(value) {
@@ -211,7 +228,11 @@ function htmlEscape(value) {
   });
 }
 
-function generationErrorHTML(desc) {
+function generationErrorHTML(desc, reasons) {
+  const detail =
+    Array.isArray(reasons) && reasons.length
+      ? `<p>${htmlEscape(reasons.slice(0, 3).join(" "))}</p>`
+      : `<p>The AI service did not return a usable app. Try again in a moment.</p>`;
   return `<div class="app-generation-error">
 <style>
 .app-generation-error{padding:24px;font-family:system-ui,sans-serif;text-align:center;color:#e8e8f0}
@@ -221,7 +242,7 @@ function generationErrorHTML(desc) {
 </style>
 <div class="ic">⚠️</div>
 <h2>Could not generate ${htmlEscape(desc)}</h2>
-<p>The AI service did not return a usable app. Try again in a moment.</p>
+${detail}
 </div>`;
 }
 
@@ -233,39 +254,225 @@ const S = { windows: {}, order: [], z: 100, launcher: false };
 // ═══════════════════════════════════════════════════════════════════════
 
 function extractHTML(text) {
-  const m = text.match(/<div\s+class="app-[^"]*"/);
+  const m = text.match(/<div\s+class\s*=\s*["'][^"']*\bapp-[^"']*["']/i);
   if (!m) return null;
+  const lower = text.toLowerCase();
   let i = m.index,
     depth = 0,
-    sc = false,
-    st = false;
+    inScript = false,
+    inStyle = false;
+
   while (i < text.length) {
-    if (text.slice(i, i + 8) === "<script>") sc = true;
-    if (text.slice(i, i + 9) === "</script>") {
-      sc = false;
-      i += 9;
+    if (inScript) {
+      if (lower.startsWith("</script>", i)) {
+        inScript = false;
+        i += 9;
+        continue;
+      }
+      i++;
       continue;
     }
-    if (text.slice(i, i + 7) === "<style>") st = true;
-    if (text.slice(i, i + 8) === "</style>") {
-      st = false;
-      i += 8;
+    if (inStyle) {
+      if (lower.startsWith("</style>", i)) {
+        inStyle = false;
+        i += 8;
+        continue;
+      }
+      i++;
       continue;
     }
-    if (!sc && !st) {
-      if (text.slice(i, i + 4) === "<div" && text[i + 1] !== "/") {
-        const close = text.indexOf(">", i);
-        if (close > i && text[close - 1] !== "/") depth++;
-      }
-      if (text.slice(i, i + 6) === "</div>") {
-        depth--;
-        if (depth === 0) return text.slice(m.index, i + 6);
-      }
+
+    if (lower.startsWith("<script", i)) {
+      inScript = true;
+      const close = text.indexOf(">", i);
+      if (close === -1) return null;
+      i = close + 1;
+      continue;
+    }
+    if (lower.startsWith("<style", i)) {
+      inStyle = true;
+      const close = text.indexOf(">", i);
+      if (close === -1) return null;
+      i = close + 1;
+      continue;
+    }
+
+    if (lower.startsWith("<div", i) && !lower.startsWith("</div", i)) {
+      const close = text.indexOf(">", i);
+      if (close === -1) return null;
+      if (!/\/\s*>$/.test(text.slice(i, close + 1))) depth++;
+      i = close + 1;
+      continue;
+    }
+    if (lower.startsWith("</div>", i)) {
+      depth--;
+      if (depth === 0) return text.slice(m.index, i + 6);
+      i += 6;
+      continue;
     }
     i++;
   }
-  if (m) return text.slice(m.index);
   return null;
+}
+
+function stripAIFormatting(raw) {
+  if (!raw) return null;
+  return String(raw)
+    .replace(/<thinking>[\s\S]*?<\/thinking>\s*/gi, "")
+    .replace(/^\s*```[\w-]*\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+}
+
+function visibleTextFromHTML(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function validateGeneratedApp(html, desc) {
+  const reasons = [];
+  if (!html || html.length < 300) {
+    reasons.push("The generated HTML was too small to be a complete app.");
+    return { ok: false, reasons };
+  }
+
+  const rootMatch = html.match(
+    /<div\s+class\s*=\s*["'][^"']*\bapp-[^"']*["']/i,
+  );
+  if (!rootMatch) reasons.push("Missing the required app-* root container.");
+  if (!/<style\b[\s\S]*?>[\s\S]{20,}<\/style>/i.test(html)) {
+    reasons.push("Missing substantial scoped CSS.");
+  }
+
+  const scripts = [
+    ...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi),
+  ].map((m) => m[1].trim());
+  const scriptText = scripts.join("\n");
+  const scriptWithoutComments = scriptText
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|\n)\s*\/\/.*(?=\n|$)/g, "")
+    .trim();
+
+  const interactiveMatches = html.match(
+    /<(button|input|textarea|select|canvas|form)\b|contenteditable\s*=\s*["']?true|role\s*=\s*["']?(button|slider|tab|switch|menuitem)/gi,
+  );
+  const controlCount = interactiveMatches ? interactiveMatches.length : 0;
+  const hasIframe = /<iframe\b/i.test(html);
+  const hasInlineHandlers = /\son[a-z]+\s*=/i.test(html);
+  const hasBehaviorSignals =
+    /(addEventListener|onclick|oninput|onchange|onkeydown|onsubmit|requestAnimationFrame|setInterval|setTimeout|localStorage|os\.fs|os\.clipboard|os\.shell|os\.notify|fetch\s*\(|FileReader|getContext\s*\(|new\s+Audio|AudioContext|classList|appendChild|remove\s*\(|textContent|innerHTML|\.value\s*=)/i.test(
+      scriptText,
+    );
+  const hasSubstantialScript = scriptWithoutComments.length >= 80;
+
+  if (
+    controlCount > 0 &&
+    !hasIframe &&
+    !hasInlineHandlers &&
+    !hasSubstantialScript
+  ) {
+    reasons.push(
+      "Interactive controls were generated without enough JavaScript behavior.",
+    );
+  } else if (
+    controlCount >= 3 &&
+    !hasIframe &&
+    !hasInlineHandlers &&
+    !hasBehaviorSignals
+  ) {
+    reasons.push(
+      "The JavaScript does not appear to wire the visible controls to behavior.",
+    );
+  }
+
+  const visibleText = visibleTextFromHTML(html);
+  if (
+    /(coming soon|not implemented|todo:|does nothing|non[- ]functional|static preview|ui only|mock only|demo only)/i.test(
+      visibleText,
+    )
+  ) {
+    reasons.push("The app contains placeholder or non-functional text.");
+  }
+  if (
+    /href\s*=\s*["']#['"]/i.test(html) &&
+    !hasInlineHandlers &&
+    !hasSubstantialScript
+  ) {
+    reasons.push("The app contains dead links without JavaScript handlers.");
+  }
+
+  const managesUserData =
+    /\b(todo|to-do|task|note|memo|journal|diary|list|tracker|habit|budget|expense|inventory|recipe|bookmark|contact|calendar|planner|kanban)\b/i.test(
+      desc,
+    );
+  if (
+    managesUserData &&
+    controlCount > 0 &&
+    !/(localStorage|os\.fs)/i.test(scriptText)
+  ) {
+    reasons.push(
+      "Apps that manage user data should save and reload it with os.fs or localStorage.",
+    );
+  }
+
+  return { ok: reasons.length === 0, reasons };
+}
+
+function prepareGeneratedApp(raw, desc) {
+  const cleaned = stripAIFormatting(raw);
+  if (!cleaned) {
+    return {
+      ok: false,
+      html: null,
+      source: "",
+      reasons: ["The AI returned no text."],
+    };
+  }
+  const html = extractHTML(cleaned);
+  if (!html) {
+    return {
+      ok: false,
+      html: null,
+      source: cleaned,
+      reasons: ["The AI did not return one complete app-* root div."],
+    };
+  }
+  const validation = validateGeneratedApp(html, desc);
+  return { ok: validation.ok, html, source: html, reasons: validation.reasons };
+}
+
+function buildRepairPrompt(desc, previousHTML, reasons) {
+  const reasonList =
+    reasons.map((r) => `- ${r}`).join("\n") || "- Failed validation.";
+  const clippedHTML = String(previousHTML || "").slice(0, 32000);
+  return `${APP_SPEC}${templateReference(desc)}
+
+User request: "${desc}"
+
+The previous generated app was rejected because:
+${reasonList}
+
+Repair it now. Return a complete replacement app, not a patch. Preserve the requested app idea and visual quality, but make all controls and workflows actually functional.
+
+Previous generated HTML:
+${clippedHTML}
+
+Only output the corrected HTML code, no markdown or explanation.`;
+}
+
+async function repairGeneratedApp(desc, previousHTML, reasons) {
+  try {
+    return await callAI(buildRepairPrompt(desc, previousHTML, reasons), null, {
+      temperature: AI_REPAIR_TEMPERATURE,
+    });
+  } catch (e) {
+    console.log("[AI] Repair:", e.message);
+    return null;
+  }
 }
 
 function bootMsg(msg, pct) {
@@ -345,13 +552,13 @@ function playStartupSound() {
 // GOOGLE GEMINI API
 // ═══════════════════════════════════════════════════════════════════════
 
-async function callAI(prompt, onStream) {
+async function callAI(prompt, onStream, options = {}) {
   const url = `${AI_BACKEND_URL}${onStream ? "?stream=1" : ""}`;
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
-      temperature: AI_TEMPERATURE,
-      maxOutputTokens: AI_MAX_TOKENS,
+      temperature: options.temperature ?? AI_TEMPERATURE,
+      maxOutputTokens: options.maxOutputTokens ?? AI_MAX_TOKENS,
     },
   };
 
@@ -429,10 +636,7 @@ async function streamApp(id, desc, onProgress) {
     const result = await callAI(prompt, onChunk);
     if (!result) return null;
 
-    let finalCode = result.replace(/<thinking>[\s\S]*?<\/thinking>\s*/g, "");
-    finalCode = finalCode.replace(/^\s*```[\w]*\n?|```\s*$/g, "").trim();
-
-    return finalCode;
+    return stripAIFormatting(result);
   } catch (e) {
     console.log("[AI] Streaming:", e.message);
     return null;
@@ -1206,8 +1410,19 @@ async function openApp(desc) {
     return;
   }
   if (appCache[id]) {
-    renderApp(id, d, appCache[id]);
-    return;
+    const cached = validateGeneratedApp(appCache[id], d);
+    if (cached.ok) {
+      renderApp(id, d, appCache[id]);
+      return;
+    }
+    console.warn(
+      "[AI] Cached app failed validation; regenerating",
+      cached.reasons,
+    );
+    delete appCache[id];
+    try {
+      localStorage.removeItem("io_app_" + id);
+    } catch (_) {}
   }
 
   createWin(id, "Generating...", "⏳", 540, 400);
@@ -1226,32 +1441,46 @@ async function openApp(desc) {
 </div>`;
   }
 
+  const setBuildStatus = (message) => {
+    const st = document.getElementById("build-st-" + id);
+    if (st) st.textContent = message;
+  };
+
   const raw =
     (await streamApp(id, d, (txt) => {
       const el = document.getElementById("build-pv-" + id);
       const st = document.getElementById("build-st-" + id);
       if (!el || !st) return;
       el.style.display = "block";
-      let clean = txt
-        .replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
-        .replace(/```[\w]*\n?/g, "");
+      let clean = stripAIFormatting(txt) || "";
       el.textContent = clean.length > 1200 ? "…\n" + clean.slice(-1200) : clean;
       el.scrollTop = el.scrollHeight;
       st.textContent = "Generating...";
     })) || (await genWithAI(d));
-  const cleaned = raw
-    ? raw
-        .replace(/^\s*```[\w]*\n?|```\s*$/g, "")
-        .replace(/<thinking>[\s\S]*?<\/thinking>\n*/g, "")
-    : null;
-  const html = cleaned ? extractHTML(cleaned) : null;
 
-  if (html) {
-    appCache[id] = html;
-    saveApp(id, d, html);
-    renderApp(id, d, html);
+  setBuildStatus("Checking functionality...");
+  let result = prepareGeneratedApp(raw, d);
+
+  if (!result.ok) {
+    console.warn("[AI] Generated app failed validation", result.reasons);
+    setBuildStatus(
+      "Generated UI looked incomplete. Repairing functionality...",
+    );
+    const repairedRaw = await repairGeneratedApp(
+      d,
+      result.source || raw,
+      result.reasons,
+    );
+    result = prepareGeneratedApp(repairedRaw, d);
+  }
+
+  if (result.ok && result.html) {
+    appCache[id] = result.html;
+    saveApp(id, d, result.html);
+    renderApp(id, d, result.html);
   } else {
-    renderApp(id, d, generationErrorHTML(d));
+    console.warn("[AI] App generation failed", result.reasons);
+    renderApp(id, d, generationErrorHTML(d, result.reasons));
   }
   updTB();
 }
