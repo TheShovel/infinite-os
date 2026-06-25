@@ -10,6 +10,16 @@ const AI_TEMPERATURE = 0.55;
 const AI_MAX_TOKENS = 65536;
 const AI_REPAIR_TEMPERATURE = 0.25;
 
+const DEFAULT_DESKTOP_MENU_ITEMS = [
+  "launcher",
+  "showDesktop",
+  "refreshDesktop",
+  "closeWindows",
+  "settings",
+  "welcome",
+  "about",
+];
+
 const appCache = {};
 
 // ─── OS App Spec (fed to the AI so it knows how to build apps) ─────
@@ -118,9 +128,9 @@ file = await os.shell.openFile(accept?) → Promise<{name,type,size,dataUrl}> or
 os.shell.saveFile(name,url)    → trigger file download
 
 === OS Settings (persistent theming) ===
-val = os.settings.get(key)     → get a setting (accent, wallpaper, wallpaperBlur, wallpaperDim)
+os.settings.get(key)     → get a setting (accent, wallpaper, wallpaperBlur, wallpaperDim, desktopMenuItems)
 os.settings.set(key,val)      → change a setting (saves + applies instantly)
-os.settings.getAll()           → {accent, wallpaper, wallpaperBlur, wallpaperDim} all current values
+os.settings.getAll()           → all current settings
 os.settings.reset()            → restore all defaults
 os.settings.onChange(fn)       → subscribe to setting changes: fn(key, value) called on every set()
 os.settings.offChange(fn)      → unsubscribe
@@ -131,6 +141,7 @@ Available settings:
   wallpaperBlur  → blur amount in pixels for the wallpaper (0 = no blur)
   wallpaperDim   → darkness overlay opacity 0-1 for wallpaper readability
   theme          → "dark" or "light" — OS color scheme
+  desktopMenuItems → array of enabled desktop right-click menu item IDs
 
 ---
 THEMING — use OS CSS variables for automatic dark/light mode
@@ -961,6 +972,7 @@ window.os = {
         wallpaperBlur: 0,
         wallpaperDim: 0.5,
         theme: "dark",
+        desktopMenuItems: [...DEFAULT_DESKTOP_MENU_ITEMS],
       };
       return this._data[key] !== undefined
         ? this._data[key]
@@ -983,6 +995,7 @@ window.os = {
         wallpaperBlur: 0,
         wallpaperDim: 0.5,
         theme: "dark",
+        desktopMenuItems: [...DEFAULT_DESKTOP_MENU_ITEMS],
       };
       return { ...D, ...this._data };
     },
@@ -1096,6 +1109,20 @@ window.os = {
 // WINDOW MANAGER
 // ═══════════════════════════════════════════════════════════════════════
 
+function clampWinPos(win) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  win.x = Math.max(0, Math.min(vw - win.w, win.x));
+  win.y = Math.max(0, Math.min(vh - win.h, win.y));
+}
+
+function clampWinSize(win) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  win.w = Math.min(win.w, vw - win.x);
+  win.h = Math.min(win.h, vh - win.y);
+}
+
 function createWin(id, title, icon, w, h, x, y) {
   if (S.windows[id]) {
     focusWin(id);
@@ -1114,6 +1141,7 @@ function createWin(id, title, icon, w, h, x, y) {
     min: false,
     prev: null,
   };
+  clampWinPos(win);
   S.windows[id] = win;
   S.order.push(id);
   renderWin(id);
@@ -1130,6 +1158,7 @@ function renderWin(id) {
   const el = document.createElement("div");
   el.className = "window" + (w.max ? " max" : "");
   el.id = "w-" + id;
+  clampWinPos(w);
   Object.assign(el.style, {
     left: w.x + "px",
     top: w.y + "px",
@@ -1200,6 +1229,7 @@ function MW(id) {
       w.y = w.prev.y;
       w.w = w.prev.w;
       w.h = w.prev.h;
+      clampWinPos(w);
     }
   } else {
     w.prev = { x: w.x, y: w.y, w: w.w, h: w.h };
@@ -1223,6 +1253,7 @@ function resizeWin(id, w, h) {
   if (!win || win.max) return;
   win.w = Math.max(300, w);
   win.h = Math.max(200, h);
+  clampWinSize(win);
   const e = document.getElementById("w-" + id);
   if (e) {
     e.style.width = win.w + "px";
@@ -1242,6 +1273,7 @@ function dr(e, id) {
   const mv = (ev) => {
     w.x = sl + (ev.clientX - sx);
     w.y = st + (ev.clientY - sy);
+    clampWinPos(w);
     const el = document.getElementById("w-" + id);
     if (el) {
       el.style.left = w.x + "px";
@@ -1270,6 +1302,7 @@ function rz(e, id) {
   const mv = (ev) => {
     w.w = Math.max(300, sw + (ev.clientX - sx));
     w.h = Math.max(200, sh + (ev.clientY - sy));
+    clampWinSize(w);
     const el = document.getElementById("w-" + id);
     if (el) {
       el.style.width = w.w + "px";
@@ -1396,23 +1429,82 @@ function renderApp(id, desc, html) {
   updTB();
 }
 
-async function openApp(desc) {
-  closeLauncher();
-  const d = desc.trim();
-  if (!d) return;
-  const id =
-    d
+function appIdFor(desc) {
+  return (
+    String(desc || "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_|_$/g, "") || "app";
-  if (S.windows[id]) {
+      .replace(/^_|_$/g, "") || "app"
+  );
+}
+
+function savedAppEntry(id) {
+  try {
+    const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
+    return index.find((entry) => entry.id === id) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function savedAppName(id, fallback) {
+  const entry = savedAppEntry(id);
+  return entry?.name || fallback || id.replace(/_/g, " ");
+}
+
+function loadAppHTML(id) {
+  if (appCache[id]) return appCache[id];
+  try {
+    const html = localStorage.getItem("io_app_" + id);
+    if (html) appCache[id] = html;
+    return html;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function openInstalledApp(id, fallbackName) {
+  await openApp(savedAppName(id, fallbackName), { id });
+}
+
+async function regenerateApp(id, closeWinId) {
+  const name = savedAppName(id);
+  if (
+    !confirm(
+      `Regenerate "${name}" with AI? This replaces the app code but keeps any data the app saved separately.`,
+    )
+  ) {
+    return;
+  }
+
+  delete appCache[id];
+  try {
+    localStorage.removeItem("io_app_" + id);
+  } catch (_) {}
+
+  if (closeWinId && S.windows[closeWinId]) cW(closeWinId);
+  if (S.windows[id]) cW(id);
+  showNotif("🔁 Regenerating", 'Building a fresh version of "' + name + '"');
+  await openApp(name, { id, regenerate: true });
+}
+
+async function openApp(desc, options = {}) {
+  closeLauncher();
+  const d = String(desc || "").trim();
+  if (!d) return;
+  const id = options.id || appIdFor(d);
+  const forceRegenerate = !!options.regenerate;
+  if (S.windows[id] && !forceRegenerate) {
     focusWin(id);
     return;
   }
-  if (appCache[id]) {
-    const cached = validateGeneratedApp(appCache[id], d);
+  if (S.windows[id] && forceRegenerate) cW(id);
+
+  const cachedHTML = forceRegenerate ? null : loadAppHTML(id);
+  if (cachedHTML) {
+    const cached = validateGeneratedApp(cachedHTML, d);
     if (cached.ok) {
-      renderApp(id, d, appCache[id]);
+      renderApp(id, d, cachedHTML);
       return;
     }
     console.warn(
@@ -1490,7 +1582,7 @@ function addDI(id, name, emoji) {
   const el = document.createElement("div");
   el.className = "desktop-icon";
   el.id = "di-" + id;
-  el.ondblclick = () => openApp(name);
+  el.ondblclick = () => openInstalledApp(id, name);
   el.oncontextmenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1519,6 +1611,7 @@ function addDI(id, name, emoji) {
       showAppProperties(id);
       menu.remove();
     };
+
     menu.querySelector("[data-action=del]").onclick = () => {
       uninstallApp(id);
       menu.remove();
@@ -1586,7 +1679,7 @@ function updateDI(id, name, emoji) {
   const el = document.getElementById("di-" + id);
   if (!el) return;
   el.innerHTML = `<div class="icon-emoji">${emoji || "📱"}</div><div class="icon-label">${name}</div>`;
-  el.ondblclick = () => openApp(name);
+  el.ondblclick = () => openInstalledApp(id, name);
 }
 
 // ─── App Properties Window ────────────────────────────────────────────
@@ -1608,9 +1701,16 @@ function showAppProperties(id) {
   const currentIcon = entry ? entry.icon : iconFor(currentName);
 
   let htmlSize = 0;
+  let appHealth = "Not saved";
+  let appHealthDetail = "";
   try {
     const h = localStorage.getItem("io_app_" + id);
-    if (h) htmlSize = h.length;
+    if (h) {
+      htmlSize = h.length;
+      const check = validateGeneratedApp(h, currentName);
+      appHealth = check.ok ? "Looks functional" : "Needs regeneration";
+      appHealthDetail = check.ok ? "" : check.reasons.slice(0, 2).join(" ");
+    }
   } catch {}
 
   createWin(winId, "⚙️ " + currentName + " Properties", "⚙️", 380, 370);
@@ -1668,9 +1768,11 @@ function showAppProperties(id) {
   </div>
   <div style="margin-bottom:12px;padding:8px 10px;background:var(--surface);border-radius:6px;font-size:11px;color:var(--text2);line-height:1.5">
     <b>App ID:</b> ${htmlEscape(id)}<br>
-    <b>Storage:</b> ${htmlSize > 0 ? (htmlSize / 1024).toFixed(1) + " KB" : "Not saved"}
+    <b>Storage:</b> ${htmlSize > 0 ? (htmlSize / 1024).toFixed(1) + " KB" : "Not saved"}<br>
+    <b>Status:</b> ${htmlEscape(appHealth)}${appHealthDetail ? `<br><span>${htmlEscape(appHealthDetail)}</span>` : ""}
   </div>
-  <div style="margin-top:auto;display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border)">
+  <div style="margin-top:auto;display:flex;gap:8px;align-items:center;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border)">
+    <button onclick="regenerateApp('${id}','${winId}')" style="padding:8px 12px;border:none;border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;margin-right:auto">🔁 Regenerate</button>
     <button onclick="cW('${winId}')" style="padding:8px 20px;border:none;border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;cursor:pointer">Cancel</button>
     <button onclick="saveAppProperties('${id}','${winId}')" style="padding:8px 20px;border:none;border-radius:6px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer">Save</button>
   </div>
@@ -1952,22 +2054,305 @@ function clock() {
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function closeDesktopMenu() {
+  document.getElementById("ctx")?.classList.add("hide");
+}
+
+function desktopMenuActions() {
+  return [
+    {
+      id: "launcher",
+      icon: "✦",
+      title: "Open Launcher",
+      label: "✦ Open Launcher",
+      description: "Search, launch, or generate an app.",
+      shortcut: "Ctrl K",
+      group: "main",
+      run: openLauncherFromDesktopMenu,
+    },
+    {
+      id: "showDesktop",
+      icon: "🪟",
+      title: "Show Desktop",
+      label: "🪟 Show Desktop",
+      description: "Minimize every open window.",
+      shortcut: "",
+      group: "main",
+      run: showDesktop,
+    },
+    {
+      id: "refreshDesktop",
+      icon: "🔄",
+      title: "Refresh Desktop",
+      label: "🔄 Refresh Desktop",
+      description: "Reload icons, taskbar, and theme state.",
+      shortcut: "",
+      group: "main",
+      run: refreshDesktop,
+    },
+    {
+      id: "closeWindows",
+      icon: "🧹",
+      title: "Close Windows",
+      label: "🧹 Close Windows",
+      description: "Close all currently open windows.",
+      shortcut: "",
+      group: "main",
+      run: closeAllWindows,
+    },
+    {
+      id: "settings",
+      icon: "⚙️",
+      title: "Settings",
+      label: "⚙️ Settings",
+      description: "Open Infinite OS settings.",
+      shortcut: "",
+      group: "system",
+      run: openDesktopSettings,
+    },
+    {
+      id: "welcome",
+      icon: "✦",
+      title: "Welcome",
+      label: "✦ Welcome",
+      description: "Show the getting-started window.",
+      shortcut: "",
+      group: "system",
+      run: showWelcomeFromDesktopMenu,
+    },
+    {
+      id: "about",
+      icon: "ℹ️",
+      title: "About Infinite OS",
+      label: "ℹ️ About Infinite OS",
+      description: "Show version and project information.",
+      shortcut: "",
+      group: "system",
+      run: showAboutFromDesktopMenu,
+    },
+  ];
+}
+
+function desktopMenuActionById(id) {
+  return desktopMenuActions().find((item) => item.id === id) || null;
+}
+
+function getDesktopMenuItemIds() {
+  const known = new Set(desktopMenuActions().map((item) => item.id));
+  const raw = window.os.settings.get("desktopMenuItems");
+  const ids = Array.isArray(raw) ? raw : DEFAULT_DESKTOP_MENU_ITEMS;
+  const clean = ids.filter(
+    (id, index) => known.has(id) && ids.indexOf(id) === index,
+  );
+  return clean;
+}
+
+function saveDesktopMenuItemIds(ids) {
+  const known = new Set(desktopMenuActions().map((item) => item.id));
+  window.os.settings.set(
+    "desktopMenuItems",
+    ids.filter((id, index) => known.has(id) && ids.indexOf(id) === index),
+  );
+}
+
+function insertDesktopMenuItem(ids, itemId) {
+  if (ids.includes(itemId)) return ids;
+  const defaults = DEFAULT_DESKTOP_MENU_ITEMS;
+  const targetIndex = defaults.indexOf(itemId);
+  if (targetIndex === -1) return [...ids, itemId];
+
+  for (let i = targetIndex - 1; i >= 0; i--) {
+    const before = ids.indexOf(defaults[i]);
+    if (before !== -1) {
+      const copy = [...ids];
+      copy.splice(before + 1, 0, itemId);
+      return copy;
+    }
+  }
+  for (let i = targetIndex + 1; i < defaults.length; i++) {
+    const after = ids.indexOf(defaults[i]);
+    if (after !== -1) {
+      const copy = [...ids];
+      copy.splice(after, 0, itemId);
+      return copy;
+    }
+  }
+  return [...ids, itemId];
+}
+
+function setDesktopMenuItemEnabled(itemId, enabled, settingsWinId) {
+  const ids = getDesktopMenuItemIds();
+  const next = enabled
+    ? insertDesktopMenuItem(ids, itemId)
+    : ids.filter((id) => id !== itemId);
+  saveDesktopMenuItemIds(next);
+  rerenderSettingsWindow(settingsWinId);
+}
+
+function moveDesktopMenuItem(itemId, direction, settingsWinId) {
+  const ids = getDesktopMenuItemIds();
+  const index = ids.indexOf(itemId);
+  const nextIndex = index + direction;
+  if (index === -1 || nextIndex < 0 || nextIndex >= ids.length) return;
+  const next = [...ids];
+  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  saveDesktopMenuItemIds(next);
+  rerenderSettingsWindow(settingsWinId);
+}
+
+function resetDesktopMenuItems(settingsWinId) {
+  saveDesktopMenuItemIds([...DEFAULT_DESKTOP_MENU_ITEMS]);
+  rerenderSettingsWindow(settingsWinId);
+}
+
+function rerenderSettingsWindow(settingsWinId) {
+  const body = document.getElementById("wb-" + settingsWinId);
+  if (!body) return;
+  const scrollTop = body.scrollTop;
+  const restoreScroll = () => {
+    const maxScroll = Math.max(0, body.scrollHeight - body.clientHeight);
+    body.scrollTop = Math.min(scrollTop, maxScroll);
+  };
+  renderSettingsBody(settingsWinId, body);
+  restoreScroll();
+  requestAnimationFrame(restoreScroll);
+}
+
+function renderDesktopContextMenu() {
+  const menu = document.getElementById("ctx");
+  if (!menu) return;
+  const ids = getDesktopMenuItemIds();
+  menu.innerHTML = "";
+
+  if (!ids.length) {
+    const empty = document.createElement("div");
+    empty.className = "ctx-empty";
+    empty.textContent = "No menu entries enabled";
+    menu.appendChild(empty);
+    return;
+  }
+
+  let previousGroup = null;
+  ids.forEach((id) => {
+    const item = desktopMenuActionById(id);
+    if (!item) return;
+    if (previousGroup && item.group !== previousGroup) {
+      const sep = document.createElement("div");
+      sep.className = "div";
+      menu.appendChild(sep);
+    }
+    previousGroup = item.group;
+
+    const row = document.createElement("div");
+    row.className = "ctx-item";
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    row.appendChild(label);
+    if (item.shortcut) {
+      const shortcut = document.createElement("em");
+      shortcut.textContent = item.shortcut;
+      row.appendChild(shortcut);
+    }
+    row.onclick = item.run;
+    menu.appendChild(row);
+  });
+}
+
+function showDesktopMenu(x, y) {
+  const menu = document.getElementById("ctx");
+  if (!menu) return;
+  renderDesktopContextMenu();
+  menu.style.visibility = "hidden";
+  menu.classList.remove("hide");
+  const w = menu.offsetWidth || 210;
+  const h = menu.offsetHeight || 260;
+  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + "px";
+  menu.style.visibility = "";
+}
+
+function openLauncherFromDesktopMenu() {
+  closeDesktopMenu();
+  openLauncher();
+}
+
+function openDesktopSettings() {
+  closeDesktopMenu();
+  openSettings();
+}
+
+function showWelcomeFromDesktopMenu() {
+  closeDesktopMenu();
+  showWelcome();
+}
+
+function showAboutFromDesktopMenu() {
+  closeDesktopMenu();
+  showAbout();
+}
+
+function showDesktop() {
+  closeDesktopMenu();
+  let count = 0;
+  Object.values(S.windows).forEach((w) => {
+    if (w.min) return;
+    w.min = true;
+    count++;
+    const el = document.getElementById("w-" + w.id);
+    if (el) el.style.display = "none";
+  });
+  updTB();
+  showNotif(
+    "🪟 Desktop",
+    count
+      ? `Minimized ${count} window${count === 1 ? "" : "s"}`
+      : "No open windows",
+  );
+}
+
+function refreshDesktop() {
+  closeDesktopMenu();
+  loadSavedApps();
+  applySettings();
+  updTB();
+  showNotif("🔄 Desktop refreshed", "Icons, taskbar, and theme were refreshed");
+}
+
+function closeAllWindows() {
+  closeDesktopMenu();
+  const ids = [...S.order];
+  if (!ids.length) {
+    showNotif("🧹 Close Windows", "No open windows to close");
+    return;
+  }
+  if (
+    !confirm(`Close ${ids.length} open window${ids.length === 1 ? "" : "s"}?`)
+  ) {
+    return;
+  }
+  ids.forEach((id) => {
+    document.getElementById("w-" + id)?.remove();
+    delete S.windows[id];
+  });
+  S.order = [];
+  updTB();
+  showNotif(
+    "🧹 Closed",
+    `Closed ${ids.length} window${ids.length === 1 ? "" : "s"}`,
+  );
+}
+
 document.addEventListener("contextmenu", (e) => {
+  const onDesktop = e.target.closest("#desktop");
+  const onDesktopIcon = e.target.closest(".desktop-icon");
+  if (!onDesktop || onDesktopIcon) return;
   e.preventDefault();
-  const m = document.getElementById("ctx");
-  m.style.left = Math.min(e.clientX, window.innerWidth - 200) + "px";
-  m.style.top = Math.min(e.clientY, window.innerHeight - 250) + "px";
-  m.classList.remove("hide");
+  showDesktopMenu(e.clientX, e.clientY);
 });
 document.addEventListener("click", (e) => {
-  if (!e.target.closest("#ctx"))
-    document.getElementById("ctx").classList.add("hide");
+  if (!e.target.closest("#ctx")) closeDesktopMenu();
 });
-document
-  .getElementById("desktop")
-  .addEventListener("click", () =>
-    document.getElementById("ctx").classList.add("hide"),
-  );
+document.getElementById("desktop").addEventListener("click", closeDesktopMenu);
 
 let _welcomed = false;
 
@@ -1994,10 +2379,7 @@ function showWelcome() {
       <span style="font-size:20px;flex-shrink:0">🔍</span>
       <div><strong style="font-size:13px">Launch anything</strong><br><span style="font-size:12px;color:var(--text2)">Click the ✦ button or press <kbd style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:11px">Ctrl+K</kbd> to open the launcher. Describe any app and AI builds it instantly.</span></div>
     </div>
-    <div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);padding:12px 16px;border-radius:var(--radius-sm);text-align:left">
-      <span style="font-size:20px;flex-shrink:0">📦</span>
-      <div><strong style="font-size:13px">Built-in apps</strong><br><span style="font-size:12px;color:var(--text2)">Right-click the desktop for quick access to Calculator, To-Do List, Notes, and Paint.</span></div>
-    </div>
+
     <div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface);padding:12px 16px;border-radius:var(--radius-sm);text-align:left">
       <span style="font-size:20px;flex-shrink:0">☁️</span>
       <div><strong style="font-size:13px">Cloud-powered AI</strong><br><span style="font-size:12px;color:var(--text2)">Apps are generated by Google Gemini via the cloud API backend.</span></div>
@@ -2031,6 +2413,77 @@ function openSettings() {
   const body = document.getElementById("wb-" + id);
   if (!body) return;
   renderSettingsBody(id, body);
+}
+
+function desktopMenuSettingsHTML(settingsWinId) {
+  const enabledIds = getDesktopMenuItemIds();
+  const actions = desktopMenuActions();
+  const actionById = new Map(actions.map((item) => [item.id, item]));
+  const visible = enabledIds.map((id) => actionById.get(id)).filter(Boolean);
+  const hidden = actions.filter((item) => !enabledIds.includes(item.id));
+  const preview = visible.length
+    ? visible
+        .map(
+          (item) => `<span class="menu-preview-pill">
+            <span class="menu-preview-icon">${htmlEscape(item.icon || "•")}</span>
+            ${htmlEscape(item.title || item.label)}
+          </span>`,
+        )
+        .join("")
+    : `<span class="menu-preview-empty">No entries enabled. The desktop menu will show an empty state.</span>`;
+  const row = (item, enabled, position) => {
+    const title = item.title || item.label;
+    const description = item.description || "Desktop context menu action.";
+    const upDisabled = !enabled || position <= 0 ? "disabled" : "";
+    const downDisabled =
+      !enabled || position >= visible.length - 1 ? "disabled" : "";
+    const shortcut = item.shortcut
+      ? `<span class="menu-shortcut-chip">${htmlEscape(item.shortcut)}</span>`
+      : "";
+    const orderBadge = enabled
+      ? `<span class="menu-order-badge" title="Menu position ${position + 1}">${position + 1}</span>`
+      : `<span class="menu-order-badge muted">Hidden</span>`;
+
+    return `<div class="menu-edit-row${enabled ? "" : " off"}">
+      <div class="menu-edit-info">
+        <span class="menu-edit-icon">${htmlEscape(item.icon || "•")}</span>
+        <div class="menu-edit-main">
+          <div class="menu-edit-title-row">
+            <span class="menu-edit-title">${htmlEscape(title)}</span>
+            ${shortcut}
+          </div>
+          <div class="menu-edit-desc">${htmlEscape(description)}</div>
+        </div>
+      </div>
+      <div class="menu-edit-side">
+        ${orderBadge}
+        <div class="menu-edit-controls" aria-label="Reorder ${htmlEscape(title)}">
+          <button ${upDisabled} onclick="moveDesktopMenuItem('${item.id}',-1,'${settingsWinId}')" title="Move up" aria-label="Move ${htmlEscape(title)} up">↑</button>
+          <button ${downDisabled} onclick="moveDesktopMenuItem('${item.id}',1,'${settingsWinId}')" title="Move down" aria-label="Move ${htmlEscape(title)} down">↓</button>
+        </div>
+        <label class="menu-toggle" title="${enabled ? "Hide" : "Show"} ${htmlEscape(title)}">
+          <input type="checkbox" ${enabled ? "checked" : ""} onchange="setDesktopMenuItemEnabled('${item.id}',this.checked,'${settingsWinId}')" aria-label="${enabled ? "Hide" : "Show"} ${htmlEscape(title)}">
+          <span class="menu-toggle-ui"></span>
+        </label>
+      </div>
+    </div>`;
+  };
+
+  return `<div class="menu-editor-head">
+      <div>
+        <strong>${enabledIds.length} visible ${enabledIds.length === 1 ? "entry" : "entries"}</strong>
+        <span>Changes apply immediately to the desktop right-click menu.</span>
+      </div>
+      <button class="menu-reset-mini" onclick="resetDesktopMenuItems('${settingsWinId}')">Reset</button>
+    </div>
+    <div class="menu-preview-mini" aria-label="Current desktop menu preview">
+      ${preview}
+    </div>
+    <div class="menu-editor-list">
+      <div class="menu-group-title">Visible</div>
+      ${visible.length ? visible.map((item, index) => row(item, true, index)).join("") : `<div class="menu-empty-card">No visible entries. Turn on any hidden action below.</div>`}
+      ${hidden.length ? `<div class="menu-group-title">Hidden</div>${hidden.map((item) => row(item, false, -1)).join("")}` : ""}
+    </div>`;
 }
 
 function renderSettingsBody(id, body) {
@@ -2076,7 +2529,7 @@ function renderSettingsBody(id, body) {
     <label>Custom hex color</label>
     <div style="display:flex;gap:8px">
       <input id="set-hex-${id}" type="text" value="${accent}" placeholder="#7c3aed" style="flex:1;font-family:monospace" onchange="os.settings.set('accent',this.value)">
-      <button class="btn-secondary" onclick="document.getElementById('set-hex-${id}').value=os.randomColor();os.settings.set('accent',os.randomColor())" style="padding:8px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:var(--surface);color:var(--text)">🎲 Random</button>
+      <button class="btn-secondary" onclick="const c=os.randomColor();document.getElementById('set-hex-${id}').value=c;os.settings.set('accent',c)" style="padding:8px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:var(--surface);color:var(--text)">🎲 Random</button>
     </div>
   </div>
 
@@ -2117,6 +2570,14 @@ function renderSettingsBody(id, body) {
       <span onclick="os.settings.set('theme','light')" style="flex:1;padding:8px;border-radius:var(--radius-sm);background:#f5f5f7;color:#1d1d1f;text-align:center;cursor:pointer;font-size:12px;border:2px solid ${s.theme === "light" ? "var(--accent)" : "transparent"}">☀️ Light</span>
     </div>
     <p style="font-size:11px;color:var(--text2);margin-top:8px">Switch between dark and light appearance. Open apps will update with the new theme.</p>
+  </div>
+
+  <div class="sec">
+    <h3>Desktop Right-Click Menu</h3>
+    <p style="font-size:11px;color:var(--text2);line-height:1.5;margin:0 0 10px">Choose the commands shown when you right-click blank desktop space. Use the arrows to reorder visible entries.</p>
+    <div class="menu-editor">
+      ${desktopMenuSettingsHTML(id)}
+    </div>
   </div>
 
   <div class="sec">
