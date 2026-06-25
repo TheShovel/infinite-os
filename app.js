@@ -83,7 +83,7 @@ os.system.battery()           → Promise<{level,charging}> — battery info
 
 === Current App Window ===
 os.window.title               → get/set the window title bar
-os.window.icon                → get/set the window icon emoji
+os.window.icon                → get/set the window icon (emoji or SVG data URL)
 os.window.size                → {w,h} — current dimensions
 os.window.resize(w,h)         → resize window (min 300×200)
 
@@ -1167,7 +1167,7 @@ function renderWin(id) {
     zIndex: w.z,
   });
   el.dataset.id = id;
-  el.innerHTML = `<div class="window-titlebar" onmousedown="dr(event,'${id}')"><div class="wc"><button class="wcc" onclick="cW('${id}')"></button><button class="wcm" onclick="mW('${id}')"></button><button class="wcx" onclick="MW('${id}')"></button></div><div class="t" id="wt-${id}"><span class="ie">${w.icon}</span>${w.title}</div><div class="wc" style="visibility:hidden"><button></button><button></button><button></button></div></div><div class="window-body" id="wb-${id}"></div><div class="wrz" onmousedown="rz(event,'${id}')"></div>`;
+  el.innerHTML = `<div class="window-titlebar" onmousedown="dr(event,'${id}')"><div class="wc"><button class="wcc" onclick="cW('${id}')"></button><button class="wcm" onclick="mW('${id}')"></button><button class="wcx" onclick="MW('${id}')"></button></div><div class="t" id="wt-${id}"><span class="ie">${iconHTML(w.icon)}</span>${htmlEscape(w.title)}</div><div class="wc" style="visibility:hidden"><button></button><button></button><button></button></div></div><div class="window-body" id="wb-${id}"></div><div class="wrz" onmousedown="rz(event,'${id}')"></div>`;
   document.getElementById("windows-container").appendChild(el);
   if (w.min) el.style.display = "none";
 }
@@ -1179,7 +1179,8 @@ function updTitle(id) {
   const w = S.windows[id];
   if (!w) return;
   const e = document.getElementById("wt-" + id);
-  if (e) e.innerHTML = `<span class="ie">${w.icon}</span>${w.title}`;
+  if (e)
+    e.innerHTML = `<span class="ie">${iconHTML(w.icon)}</span>${htmlEscape(w.title)}`;
   updTB();
 }
 
@@ -1379,39 +1380,143 @@ body{overflow:auto}button,input,textarea,select{font:inherit}
 </html>`;
 }
 
+const ICON_PALETTES = [
+  ["#7c3aed", "#a78bfa", "#22d3ee"],
+  ["#0ea5e9", "#38bdf8", "#facc15"],
+  ["#10b981", "#34d399", "#a7f3d0"],
+  ["#f97316", "#fb923c", "#fde68a"],
+  ["#ec4899", "#f472b6", "#c4b5fd"],
+  ["#ef4444", "#f87171", "#fbbf24"],
+  ["#14b8a6", "#2dd4bf", "#99f6e4"],
+  ["#6366f1", "#818cf8", "#f0abfc"],
+  ["#64748b", "#94a3b8", "#e2e8f0"],
+];
+
+const ICON_KIND_KEYWORDS = [
+  { kind: "calculator", keys: ["calc", "math", "budget", "finance"] },
+  { kind: "todo", keys: ["todo", "task", "list", "check"] },
+  { kind: "note", keys: ["note", "memo", "write", "journal", "doc"] },
+  { kind: "paint", keys: ["paint", "draw", "sketch", "color", "picker"] },
+  { kind: "clock", keys: ["clock", "time", "watch", "timer", "stopwatch"] },
+  { kind: "weather", keys: ["weather", "forecast", "sun", "rain"] },
+  { kind: "chat", keys: ["chat", "message", "ai", "assistant", "bot"] },
+  { kind: "music", keys: ["music", "player", "sound", "audio", "radio"] },
+  { kind: "game", keys: ["game", "tic", "tac", "toe", "puzzle"] },
+  { kind: "chart", keys: ["chart", "graph", "stats", "analytics", "data"] },
+  { kind: "lock", keys: ["lock", "password", "secure", "vault"] },
+  { kind: "web", keys: ["web", "browser", "link", "site", "url"] },
+  { kind: "folder", keys: ["file", "folder", "manager", "storage"] },
+];
+
+function hashString(value) {
+  let hash = 2166136261;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function appInitials(name) {
+  const words =
+    String(name || "App")
+      .toUpperCase()
+      .match(/[A-Z0-9]+/g) || [];
+  return (words[0]?.[0] || "A") + (words[1]?.[0] || words[0]?.[1] || "");
+}
+
+function iconKindFor(name) {
+  const l = String(name || "").toLowerCase();
+  const item = ICON_KIND_KEYWORDS.find((entry) =>
+    entry.keys.some((key) => l.includes(key)),
+  );
+  return item ? item.kind : "default";
+}
+
+function encodeSVG(svg) {
+  return (
+    "data:image/svg+xml;charset=utf-8," +
+    encodeURIComponent(svg)
+      .replace(/'/g, "%27")
+      .replace(/\(/g, "%28")
+      .replace(/\)/g, "%29")
+  );
+}
+
+function iconShape(kind, initials, fg, accent) {
+  switch (kind) {
+    case "calculator":
+      return `<rect x="18" y="14" width="28" height="36" rx="6" fill="${fg}" opacity=".92"/><rect x="23" y="19" width="18" height="7" rx="2" fill="${accent}" opacity=".85"/><g fill="${accent}"><rect x="23" y="31" width="5" height="5" rx="1.5"/><rect x="30" y="31" width="5" height="5" rx="1.5"/><rect x="37" y="31" width="5" height="5" rx="1.5"/><rect x="23" y="39" width="5" height="5" rx="1.5"/><rect x="30" y="39" width="5" height="5" rx="1.5"/><rect x="37" y="39" width="5" height="5" rx="1.5"/></g>`;
+    case "todo":
+      return `<rect x="17" y="15" width="30" height="34" rx="7" fill="${fg}" opacity=".92"/><path d="M23 26l3 3 6-7" fill="none" stroke="${accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 37l3 3 6-7" fill="none" stroke="${accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M35 27h7M35 38h7" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".7"/>`;
+    case "note":
+      return `<path d="M20 13h18l7 7v31H20z" fill="${fg}" opacity=".92"/><path d="M38 13v8h8" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linejoin="round"/><path d="M26 29h13M26 36h12M26 43h8" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".78"/>`;
+    case "paint":
+      return `<path d="M33 14c-10 0-18 7-18 16 0 10 8 18 18 18h5c3 0 4-4 2-6-2-3 0-6 4-6h1c4 0 5-3 5-7 0-8-8-15-17-15z" fill="${fg}" opacity=".92"/><circle cx="25" cy="27" r="3" fill="${accent}"/><circle cx="33" cy="23" r="3" fill="#111827" opacity=".35"/><circle cx="41" cy="29" r="3" fill="${accent}" opacity=".65"/><circle cx="31" cy="37" r="3" fill="#111827" opacity=".25"/>`;
+    case "clock":
+      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".92"/><circle cx="32" cy="32" r="14" fill="none" stroke="${accent}" stroke-width="3" opacity=".65"/><path d="M32 23v10l7 5" fill="none" stroke="${accent}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    case "weather":
+      return `<circle cx="26" cy="25" r="9" fill="${accent}"/><path d="M18 42h27c4 0 7-3 7-7s-3-7-7-7c-2-7-12-8-16-2-5-2-11 2-11 8-4 1-6 3-6 7 0 1 2 1 6 1z" fill="${fg}" opacity=".94"/>`;
+    case "chat":
+      return `<path d="M16 18h32v23H31l-9 8v-8h-6z" fill="${fg}" opacity=".92"/><path d="M24 28h16M24 35h10" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".78"/>`;
+    case "music":
+      return `<path d="M39 15v24a6 6 0 1 1-4-6V20l-14 3v19a6 6 0 1 1-4-6V20z" fill="${fg}" opacity=".93"/><path d="M21 20l18-4v7l-18 4z" fill="${accent}" opacity=".82"/>`;
+    case "game":
+      return `<path d="M18 29c2-6 7-9 14-6 7-3 12 0 14 6l3 10c1 4-3 8-7 5l-5-4H27l-5 4c-4 3-8-1-7-5z" fill="${fg}" opacity=".92"/><path d="M24 33h8M28 29v8" stroke="${accent}" stroke-width="3" stroke-linecap="round"/><circle cx="39" cy="32" r="2.6" fill="${accent}"/><circle cx="44" cy="37" r="2.6" fill="${accent}" opacity=".7"/>`;
+    case "chart":
+      return `<rect x="17" y="17" width="30" height="31" rx="7" fill="${fg}" opacity=".92"/><rect x="23" y="34" width="5" height="8" rx="2" fill="${accent}"/><rect x="30" y="27" width="5" height="15" rx="2" fill="${accent}" opacity=".78"/><rect x="37" y="22" width="5" height="20" rx="2" fill="${accent}" opacity=".58"/>`;
+    case "lock":
+      return `<rect x="19" y="28" width="26" height="20" rx="6" fill="${fg}" opacity=".92"/><path d="M24 28v-5a8 8 0 0 1 16 0v5" fill="none" stroke="${fg}" stroke-width="5" stroke-linecap="round" opacity=".92"/><circle cx="32" cy="38" r="3" fill="${accent}"/>`;
+    case "web":
+      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".92"/><path d="M15 32h34M32 15c5 5 8 11 8 17s-3 12-8 17M32 15c-5 5-8 11-8 17s3 12 8 17" fill="none" stroke="${accent}" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>`;
+    case "folder":
+      return `<path d="M14 22h15l4 5h17v20H14z" fill="${fg}" opacity=".92"/><path d="M14 27h36v5H14z" fill="${accent}" opacity=".55"/>`;
+    default:
+      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".18"/><text x="32" y="39" text-anchor="middle" font-family="Inter,system-ui,-apple-system,sans-serif" font-size="20" font-weight="800" fill="${fg}">${htmlEscape(initials)}</text><path d="M46 15l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="${fg}" opacity=".72"/>`;
+  }
+}
+
 function iconFor(n) {
-  const l = n.toLowerCase();
-  if (l.includes("calc") || l.includes("math")) return "🧮";
-  if (l.includes("todo") || l.includes("task") || l.includes("list"))
-    return "✅";
-  if (l.includes("note") || l.includes("memo")) return "📝";
-  if (l.includes("paint") || l.includes("draw") || l.includes("sketch"))
-    return "🎨";
-  if (l.includes("clock") || l.includes("time") || l.includes("watch"))
-    return "🕐";
-  if (l.includes("timer") || l.includes("stopwatch")) return "⏱️";
-  if (l.includes("weather")) return "🌤️";
-  if (l.includes("chat") || l.includes("ai") || l.includes("assistant"))
-    return "💬";
-  if (l.includes("radio") || l.includes("garden")) return "📻";
-  if (l.includes("music") || l.includes("player") || l.includes("sound"))
-    return "🎵";
-  if (l.includes("convert") || l.includes("unit")) return "📏";
-  if (l.includes("tic") || l.includes("tac") || l.includes("toe")) return "❌";
-  if (l.includes("color") || l.includes("picker")) return "🎨";
-  return "📱";
+  const name = String(n || "App").trim() || "App";
+  const hash = hashString(name);
+  const palette = ICON_PALETTES[hash % ICON_PALETTES.length];
+  const [from, to, accent] = palette;
+  const kind = iconKindFor(name);
+  const initials = appInitials(name);
+  const fg = "#ffffff";
+  const blobX = 15 + (hash % 18);
+  const blobY = 10 + ((hash >>> 5) % 16);
+  const ringX = 36 + ((hash >>> 9) % 12);
+  const ringY = 38 + ((hash >>> 13) % 10);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="${htmlEscape(name)} icon"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#020617" flood-opacity=".28"/></filter></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><circle cx="${blobX}" cy="${blobY}" r="21" fill="${fg}" opacity=".12"/><circle cx="${ringX}" cy="${ringY}" r="16" fill="none" stroke="${fg}" stroke-width="8" opacity=".1"/><g filter="url(#s)">${iconShape(kind, initials, fg, accent)}</g></svg>`;
+  return encodeSVG(svg);
+}
+
+function isSvgIcon(icon) {
+  return typeof icon === "string" && /^data:image\/svg\+xml/i.test(icon);
+}
+
+function iconHTML(icon, extraClass = "") {
+  const value = String(icon || "").trim();
+  if (isSvgIcon(value)) {
+    const cls = ["svg-icon", extraClass].filter(Boolean).join(" ");
+    return `<img class="${cls}" alt="" src="${htmlEscape(value)}">`;
+  }
+  return htmlEscape(value || "📱");
 }
 
 function renderApp(id, desc, html) {
   const win = S.windows[id];
-  if (!win) createWin(id, desc, iconFor(desc), 540, 400);
+  const appIcon = savedAppEntry(id)?.icon || iconFor(desc);
+  if (!win) createWin(id, desc, appIcon, 540, 400);
   const w = S.windows[id];
   if (!w) return;
   w.title = desc
     .split(" ")
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
-  w.icon = iconFor(desc);
+  w.icon = appIcon;
   updTitle(id);
 
   const b = document.getElementById("wb-" + id);
@@ -1627,7 +1732,7 @@ function addDI(id, name, emoji) {
       document.addEventListener("click", close);
     }, 0);
   };
-  el.innerHTML = `<div class="icon-emoji">${emoji || "📱"}</div><div class="icon-label">${name}</div>`;
+  el.innerHTML = `<div class="icon-emoji">${iconHTML(emoji || iconFor(name), "desktop-svg-icon")}</div><div class="icon-label">${htmlEscape(name)}</div>`;
   document.getElementById("desktop-icons").appendChild(el);
 }
 
@@ -1678,8 +1783,18 @@ function uninstallApp(id) {
 function updateDI(id, name, emoji) {
   const el = document.getElementById("di-" + id);
   if (!el) return;
-  el.innerHTML = `<div class="icon-emoji">${emoji || "📱"}</div><div class="icon-label">${name}</div>`;
+  el.innerHTML = `<div class="icon-emoji">${iconHTML(emoji || iconFor(name), "desktop-svg-icon")}</div><div class="icon-label">${htmlEscape(name)}</div>`;
   el.ondblclick = () => openInstalledApp(id, name);
+}
+
+function updateAppIconPreview(winId) {
+  const preview = document.getElementById("pv-em-" + winId);
+  const nameInp = document.getElementById("pn-" + winId);
+  const iconInp = document.getElementById("pi-" + winId);
+  if (!preview) return;
+  const name = nameInp?.value.trim() || "App";
+  const icon = iconInp?.value.trim() || iconFor(name);
+  preview.innerHTML = iconHTML(icon, "properties-icon");
 }
 
 // ─── App Properties Window ────────────────────────────────────────────
@@ -1699,6 +1814,7 @@ function showAppProperties(id) {
       ? S.windows[id].title
       : id;
   const currentIcon = entry ? entry.icon : iconFor(currentName);
+  const currentIconInput = isSvgIcon(currentIcon) ? "" : currentIcon;
 
   let htmlSize = 0;
   let appHealth = "Not saved";
@@ -1748,23 +1864,27 @@ function showAppProperties(id) {
   body.innerHTML =
     `<div style="padding:20px;font-family:system-ui,sans-serif;height:100%;display:flex;flex-direction:column">
   <div style="text-align:center;margin-bottom:12px">
-    <div id="pv-em-${winId}" style="font-size:48px;margin-bottom:4px">${currentIcon}</div>
+    <div id="pv-em-${winId}" style="font-size:48px;margin-bottom:4px;display:flex;justify-content:center">${iconHTML(currentIcon, "properties-icon")}</div>
+    <div style="font-size:11px;color:var(--text2)">Generated SVG icons are created locally from the app name.</div>
   </div>
   <div style="margin-bottom:10px">
-    <label style="display:block;font-size:11px;color:var(--text2);margin-bottom:3px">Icon (emoji)</label>
-    <input id="pi-${winId}" value="${currentIcon}" maxlength="4" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:16px;text-align:center;outline:none" oninput="document.getElementById('pv-em-${winId}').textContent=this.value||'📱'">
+    <label style="display:block;font-size:11px;color:var(--text2);margin-bottom:3px">Emoji override</label>
+    <input id="pi-${winId}" value="${htmlEscape(currentIconInput)}" maxlength="12" placeholder="Leave blank for generated SVG" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:16px;text-align:center;outline:none" oninput="updateAppIconPreview('${winId}')">
+    <div style="display:flex;justify-content:center;margin-top:6px">
+      <button type="button" onclick="document.getElementById('pi-${winId}').value='';updateAppIconPreview('${winId}')" style="padding:5px 9px;border:none;border-radius:6px;background:var(--surface);color:var(--text2);font-size:11px;cursor:pointer">Use generated SVG</button>
+    </div>
     <div style="display:flex;gap:3px;margin-top:5px;flex-wrap:wrap;justify-content:center">` +
     emojiStrip
       .map(
         (e) =>
-          `<span data-em="${e}" onclick="document.getElementById('pi-${winId}').value='${e}';document.getElementById('pv-em-${winId}').textContent='${e}'" style="cursor:pointer;font-size:18px;padding:2px 5px;border-radius:4px" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background=''">${e}</span>`,
+          `<span data-em="${e}" onclick="document.getElementById('pi-${winId}').value='${e}';updateAppIconPreview('${winId}')" style="cursor:pointer;font-size:18px;padding:2px 5px;border-radius:4px" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background=''">${e}</span>`,
       )
       .join("") +
     `</div>
   </div>
   <div style="margin-bottom:10px">
     <label style="display:block;font-size:11px;color:var(--text2);margin-bottom:3px">App name</label>
-    <input id="pn-${winId}" value="${htmlEscape(currentName)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:14px;outline:none">
+    <input id="pn-${winId}" value="${htmlEscape(currentName)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:14px;outline:none" oninput="updateAppIconPreview('${winId}')">
   </div>
   <div style="margin-bottom:12px;padding:8px 10px;background:var(--surface);border-radius:6px;font-size:11px;color:var(--text2);line-height:1.5">
     <b>App ID:</b> ${htmlEscape(id)}<br>
@@ -1784,7 +1904,7 @@ function saveAppProperties(id, winId) {
   const iconInp = document.getElementById("pi-" + winId);
   if (!nameInp || !iconInp) return;
   const newName = nameInp.value.trim() || id;
-  const newIcon = iconInp.value.trim() || "📱";
+  const newIcon = iconInp.value.trim() || iconFor(newName);
 
   try {
     const index = JSON.parse(localStorage.getItem("io_app_index") || "[]");
@@ -2015,7 +2135,7 @@ function updTB() {
     const btn = document.createElement("button");
     btn.className =
       "tb-app" + (id === S.order[S.order.length - 1] ? " on" : "");
-    btn.innerHTML = `${w.icon} ${w.title}`;
+    btn.innerHTML = `${iconHTML(w.icon, "tb-icon")}<span class="tb-title">${htmlEscape(w.title)}</span>`;
     btn.onclick = () => {
       if (w.min) {
         w.min = false;
