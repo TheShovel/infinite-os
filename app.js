@@ -1459,22 +1459,174 @@ const ICON_PALETTES = [
   ["#14b8a6", "#2dd4bf", "#99f6e4"],
   ["#6366f1", "#818cf8", "#f0abfc"],
   ["#64748b", "#94a3b8", "#e2e8f0"],
+  ["#0891b2", "#67e8f9", "#cffafe"],
+  ["#be123c", "#fb7185", "#ffe4e6"],
+  ["#4338ca", "#60a5fa", "#bfdbfe"],
+  ["#15803d", "#86efac", "#dcfce7"],
+  ["#a16207", "#facc15", "#fef3c7"],
+  ["#7e22ce", "#d946ef", "#fae8ff"],
+  ["#334155", "#94a3b8", "#f8fafc"],
 ];
 
 const ICON_KIND_KEYWORDS = [
-  { kind: "calculator", keys: ["calc", "math", "budget", "finance"] },
-  { kind: "todo", keys: ["todo", "task", "list", "check"] },
-  { kind: "note", keys: ["note", "memo", "write", "journal", "doc"] },
-  { kind: "paint", keys: ["paint", "draw", "sketch", "color", "picker"] },
-  { kind: "clock", keys: ["clock", "time", "watch", "timer", "stopwatch"] },
-  { kind: "weather", keys: ["weather", "forecast", "sun", "rain"] },
-  { kind: "chat", keys: ["chat", "message", "ai", "assistant", "bot"] },
-  { kind: "music", keys: ["music", "player", "sound", "audio", "radio"] },
-  { kind: "game", keys: ["game", "tic", "tac", "toe", "puzzle"] },
-  { kind: "chart", keys: ["chart", "graph", "stats", "analytics", "data"] },
-  { kind: "lock", keys: ["lock", "password", "secure", "vault"] },
-  { kind: "web", keys: ["web", "browser", "link", "site", "url"] },
-  { kind: "folder", keys: ["file", "folder", "manager", "storage"] },
+  {
+    kind: "calculator",
+    keys: [
+      "calc",
+      "calculator",
+      "math",
+      "budget",
+      "finance",
+      "money",
+      "expense",
+    ],
+  },
+  {
+    kind: "todo",
+    keys: ["todo", "task", "tasks", "list", "check", "checklist", "kanban"],
+  },
+  {
+    kind: "note",
+    keys: [
+      "note",
+      "notes",
+      "memo",
+      "write",
+      "journal",
+      "doc",
+      "docs",
+      "document",
+    ],
+  },
+  {
+    kind: "paint",
+    keys: [
+      "paint",
+      "draw",
+      "drawing",
+      "sketch",
+      "color",
+      "palette",
+      "picker",
+      "design",
+    ],
+  },
+  {
+    kind: "clock",
+    keys: [
+      "clock",
+      "time",
+      "watch",
+      "timer",
+      "stopwatch",
+      "alarm",
+      "pomodoro",
+      "calendar",
+    ],
+  },
+  {
+    kind: "weather",
+    keys: [
+      "weather",
+      "forecast",
+      "sun",
+      "rain",
+      "storm",
+      "cloud",
+      "temperature",
+    ],
+  },
+  {
+    kind: "chat",
+    keys: [
+      "chat",
+      "message",
+      "messages",
+      "ai",
+      "assistant",
+      "bot",
+      "talk",
+      "support",
+    ],
+  },
+  {
+    kind: "music",
+    keys: ["music", "player", "sound", "audio", "radio", "podcast", "song"],
+  },
+  {
+    kind: "game",
+    keys: ["game", "games", "tic", "tac", "toe", "puzzle", "arcade", "play"],
+  },
+  {
+    kind: "chart",
+    keys: [
+      "chart",
+      "graph",
+      "stats",
+      "analytics",
+      "data",
+      "dashboard",
+      "report",
+    ],
+  },
+  {
+    kind: "lock",
+    keys: ["lock", "password", "secure", "security", "vault", "key", "encrypt"],
+  },
+  {
+    kind: "web",
+    keys: ["web", "browser", "link", "site", "url", "internet", "network"],
+  },
+  {
+    kind: "folder",
+    keys: ["file", "files", "folder", "manager", "storage", "drive", "archive"],
+  },
+  { kind: "mail", keys: ["mail", "email", "inbox", "letter", "newsletter"] },
+  {
+    kind: "code",
+    keys: [
+      "code",
+      "coding",
+      "developer",
+      "dev",
+      "script",
+      "html",
+      "css",
+      "javascript",
+      "json",
+    ],
+  },
+  {
+    kind: "terminal",
+    keys: ["terminal", "console", "shell", "command", "cli", "bash"],
+  },
+  { kind: "camera", keys: ["camera", "photo", "photos", "capture", "lens"] },
+  {
+    kind: "image",
+    keys: ["image", "images", "gallery", "picture", "pictures", "album"],
+  },
+  { kind: "video", keys: ["video", "movie", "film", "stream", "player"] },
+  {
+    kind: "settings",
+    keys: ["settings", "setting", "config", "preferences", "tools", "control"],
+  },
+  { kind: "search", keys: ["search", "find", "lookup", "discover"] },
+  { kind: "map", keys: ["map", "maps", "location", "gps", "route", "travel"] },
+  {
+    kind: "shop",
+    keys: ["shop", "store", "cart", "market", "commerce", "buy"],
+  },
+  {
+    kind: "book",
+    keys: ["book", "books", "read", "reader", "library", "learn"],
+  },
+  {
+    kind: "health",
+    keys: ["health", "fitness", "heart", "medical", "workout"],
+  },
+  { kind: "database", keys: ["database", "db", "sql", "table", "records"] },
+  { kind: "rocket", keys: ["rocket", "launch", "startup", "deploy", "ship"] },
+  { kind: "widget", keys: ["widget", "widgets", "desktop", "panel", "card"] },
 ];
 
 function hashString(value) {
@@ -1496,11 +1648,31 @@ function appInitials(name) {
 }
 
 function iconKindFor(name) {
-  const l = String(name || "").toLowerCase();
-  const item = ICON_KIND_KEYWORDS.find((entry) =>
-    entry.keys.some((key) => l.includes(key)),
-  );
-  return item ? item.kind : "default";
+  const text = String(name || "").toLowerCase();
+  const tokens = text.match(/[a-z0-9]+/g) || [];
+  let bestKind = "default";
+  let bestScore = 0;
+
+  for (const entry of ICON_KIND_KEYWORDS) {
+    let score = 0;
+    for (const key of entry.keys) {
+      if (tokens.includes(key)) score += 6;
+      else if (
+        key.length > 2 &&
+        tokens.some((token) => token.startsWith(key))
+      ) {
+        score += 4;
+      } else if (key.length > 2 && text.includes(key)) {
+        score += 2;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestKind = entry.kind;
+    }
+  }
+
+  return bestKind;
 }
 
 function encodeSVG(svg) {
@@ -1514,35 +1686,66 @@ function encodeSVG(svg) {
 }
 
 function iconShape(kind, initials, fg, accent) {
+  const line = `fill="none" stroke="${accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"`;
   switch (kind) {
     case "calculator":
-      return `<rect x="18" y="14" width="28" height="36" rx="6" fill="${fg}" opacity=".92"/><rect x="23" y="19" width="18" height="7" rx="2" fill="${accent}" opacity=".85"/><g fill="${accent}"><rect x="23" y="31" width="5" height="5" rx="1.5"/><rect x="30" y="31" width="5" height="5" rx="1.5"/><rect x="37" y="31" width="5" height="5" rx="1.5"/><rect x="23" y="39" width="5" height="5" rx="1.5"/><rect x="30" y="39" width="5" height="5" rx="1.5"/><rect x="37" y="39" width="5" height="5" rx="1.5"/></g>`;
+      return `<rect x="18" y="13" width="28" height="38" rx="8" fill="${fg}" opacity=".94"/><rect x="23" y="19" width="18" height="7" rx="2" fill="${accent}" opacity=".9"/><g fill="${accent}"><rect x="23" y="31" width="5" height="5" rx="1.6"/><rect x="30" y="31" width="5" height="5" rx="1.6"/><rect x="37" y="31" width="5" height="5" rx="1.6"/><rect x="23" y="39" width="5" height="5" rx="1.6"/><rect x="30" y="39" width="5" height="5" rx="1.6"/><rect x="37" y="39" width="5" height="5" rx="1.6"/></g>`;
     case "todo":
-      return `<rect x="17" y="15" width="30" height="34" rx="7" fill="${fg}" opacity=".92"/><path d="M23 26l3 3 6-7" fill="none" stroke="${accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 37l3 3 6-7" fill="none" stroke="${accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M35 27h7M35 38h7" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".7"/>`;
+      return `<rect x="17" y="15" width="30" height="34" rx="8" fill="${fg}" opacity=".94"/><path d="M23 26l3 3 6-7M23 37l3 3 6-7" ${line}/><path d="M35 27h7M35 38h7" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".72"/>`;
     case "note":
-      return `<path d="M20 13h18l7 7v31H20z" fill="${fg}" opacity=".92"/><path d="M38 13v8h8" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linejoin="round"/><path d="M26 29h13M26 36h12M26 43h8" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".78"/>`;
+      return `<path d="M20 13h18l8 8v30H20z" fill="${fg}" opacity=".94"/><path d="M38 13v9h8" ${line} opacity=".8"/><path d="M26 30h13M26 37h12M26 44h8" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".76"/>`;
     case "paint":
-      return `<path d="M33 14c-10 0-18 7-18 16 0 10 8 18 18 18h5c3 0 4-4 2-6-2-3 0-6 4-6h1c4 0 5-3 5-7 0-8-8-15-17-15z" fill="${fg}" opacity=".92"/><circle cx="25" cy="27" r="3" fill="${accent}"/><circle cx="33" cy="23" r="3" fill="#111827" opacity=".35"/><circle cx="41" cy="29" r="3" fill="${accent}" opacity=".65"/><circle cx="31" cy="37" r="3" fill="#111827" opacity=".25"/>`;
+      return `<path d="M33 14c-10 0-18 7-18 16 0 10 8 18 18 18h5c3 0 4-4 2-6-2-3 0-6 4-6h1c4 0 5-3 5-7 0-8-8-15-17-15z" fill="${fg}" opacity=".94"/><circle cx="25" cy="27" r="3" fill="${accent}"/><circle cx="33" cy="23" r="3" fill="#0f172a" opacity=".35"/><circle cx="41" cy="29" r="3" fill="${accent}" opacity=".65"/><circle cx="31" cy="37" r="3" fill="#0f172a" opacity=".25"/>`;
     case "clock":
-      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".92"/><circle cx="32" cy="32" r="14" fill="none" stroke="${accent}" stroke-width="3" opacity=".65"/><path d="M32 23v10l7 5" fill="none" stroke="${accent}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".94"/><circle cx="32" cy="32" r="14" fill="none" stroke="${accent}" stroke-width="3" opacity=".65"/><path d="M32 23v10l7 5" ${line}/>`;
     case "weather":
-      return `<circle cx="26" cy="25" r="9" fill="${accent}"/><path d="M18 42h27c4 0 7-3 7-7s-3-7-7-7c-2-7-12-8-16-2-5-2-11 2-11 8-4 1-6 3-6 7 0 1 2 1 6 1z" fill="${fg}" opacity=".94"/>`;
+      return `<circle cx="26" cy="24" r="9" fill="${accent}"/><path d="M18 43h27c4 0 7-3 7-7s-3-7-7-7c-2-7-12-8-16-2-5-2-11 2-11 8-4 1-6 3-6 7 0 1 2 1 6 1z" fill="${fg}" opacity=".95"/>`;
     case "chat":
-      return `<path d="M16 18h32v23H31l-9 8v-8h-6z" fill="${fg}" opacity=".92"/><path d="M24 28h16M24 35h10" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".78"/>`;
+      return `<path d="M16 18h32v23H31l-9 8v-8h-6z" fill="${fg}" opacity=".94"/><path d="M24 28h16M24 35h10" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".78"/>`;
     case "music":
-      return `<path d="M39 15v24a6 6 0 1 1-4-6V20l-14 3v19a6 6 0 1 1-4-6V20z" fill="${fg}" opacity=".93"/><path d="M21 20l18-4v7l-18 4z" fill="${accent}" opacity=".82"/>`;
+      return `<path d="M39 15v24a6 6 0 1 1-4-6V20l-14 3v19a6 6 0 1 1-4-6V20z" fill="${fg}" opacity=".94"/><path d="M21 20l18-4v7l-18 4z" fill="${accent}" opacity=".82"/>`;
     case "game":
-      return `<path d="M18 29c2-6 7-9 14-6 7-3 12 0 14 6l3 10c1 4-3 8-7 5l-5-4H27l-5 4c-4 3-8-1-7-5z" fill="${fg}" opacity=".92"/><path d="M24 33h8M28 29v8" stroke="${accent}" stroke-width="3" stroke-linecap="round"/><circle cx="39" cy="32" r="2.6" fill="${accent}"/><circle cx="44" cy="37" r="2.6" fill="${accent}" opacity=".7"/>`;
+      return `<path d="M18 29c2-6 7-9 14-6 7-3 12 0 14 6l3 10c1 4-3 8-7 5l-5-4H27l-5 4c-4 3-8-1-7-5z" fill="${fg}" opacity=".94"/><path d="M24 33h8M28 29v8" stroke="${accent}" stroke-width="3" stroke-linecap="round"/><circle cx="39" cy="32" r="2.6" fill="${accent}"/><circle cx="44" cy="37" r="2.6" fill="${accent}" opacity=".72"/>`;
     case "chart":
-      return `<rect x="17" y="17" width="30" height="31" rx="7" fill="${fg}" opacity=".92"/><rect x="23" y="34" width="5" height="8" rx="2" fill="${accent}"/><rect x="30" y="27" width="5" height="15" rx="2" fill="${accent}" opacity=".78"/><rect x="37" y="22" width="5" height="20" rx="2" fill="${accent}" opacity=".58"/>`;
+      return `<rect x="17" y="17" width="30" height="31" rx="8" fill="${fg}" opacity=".94"/><rect x="23" y="34" width="5" height="8" rx="2" fill="${accent}"/><rect x="30" y="27" width="5" height="15" rx="2" fill="${accent}" opacity=".78"/><rect x="37" y="22" width="5" height="20" rx="2" fill="${accent}" opacity=".58"/>`;
     case "lock":
-      return `<rect x="19" y="28" width="26" height="20" rx="6" fill="${fg}" opacity=".92"/><path d="M24 28v-5a8 8 0 0 1 16 0v5" fill="none" stroke="${fg}" stroke-width="5" stroke-linecap="round" opacity=".92"/><circle cx="32" cy="38" r="3" fill="${accent}"/>`;
+      return `<rect x="19" y="28" width="26" height="20" rx="7" fill="${fg}" opacity=".94"/><path d="M24 28v-5a8 8 0 0 1 16 0v5" fill="none" stroke="${fg}" stroke-width="5" stroke-linecap="round" opacity=".94"/><circle cx="32" cy="38" r="3" fill="${accent}"/>`;
     case "web":
-      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".92"/><path d="M15 32h34M32 15c5 5 8 11 8 17s-3 12-8 17M32 15c-5 5-8 11-8 17s3 12 8 17" fill="none" stroke="${accent}" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>`;
+      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".94"/><path d="M15 32h34M32 15c5 5 8 11 8 17s-3 12-8 17M32 15c-5 5-8 11-8 17s3 12 8 17" ${line} opacity=".72"/>`;
     case "folder":
-      return `<path d="M14 22h15l4 5h17v20H14z" fill="${fg}" opacity=".92"/><path d="M14 27h36v5H14z" fill="${accent}" opacity=".55"/>`;
+      return `<path d="M14 22h15l4 5h17v20H14z" fill="${fg}" opacity=".94"/><path d="M14 27h36v6H14z" fill="${accent}" opacity=".55"/>`;
+    case "mail":
+      return `<rect x="15" y="20" width="34" height="25" rx="7" fill="${fg}" opacity=".94"/><path d="M18 24l14 11 14-11" ${line} opacity=".75"/>`;
+    case "code":
+      return `<rect x="15" y="17" width="34" height="30" rx="8" fill="${fg}" opacity=".94"/><path d="M27 27l-5 5 5 5M37 27l5 5-5 5" ${line}/><path d="M34 24l-4 16" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".75"/>`;
+    case "terminal":
+      return `<rect x="14" y="18" width="36" height="29" rx="7" fill="${fg}" opacity=".94"/><path d="M22 28l5 4-5 4M31 38h11" ${line}/>`;
+    case "camera":
+      return `<path d="M18 24h7l3-5h8l3 5h7v22H18z" fill="${fg}" opacity=".94"/><circle cx="32" cy="35" r="8" fill="none" stroke="${accent}" stroke-width="4"/><circle cx="43" cy="29" r="2" fill="${accent}"/>`;
+    case "image":
+      return `<rect x="16" y="17" width="32" height="30" rx="7" fill="${fg}" opacity=".94"/><circle cx="38" cy="27" r="4" fill="${accent}"/><path d="M20 42l9-10 6 6 4-4 7 8" fill="none" stroke="${accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".78"/>`;
+    case "video":
+      return `<rect x="15" y="20" width="30" height="24" rx="7" fill="${fg}" opacity=".94"/><path d="M45 28l7-5v18l-7-5z" fill="${fg}" opacity=".84"/><path d="M28 27l9 5-9 5z" fill="${accent}"/>`;
+    case "settings":
+      return `<path d="M32 14l4 5 6-1 2 6 5 3-3 5 3 5-5 3-2 6-6-1-4 5-4-5-6 1-2-6-5-3 3-5-3-5 5-3 2-6 6 1z" fill="${fg}" opacity=".94" fill-rule="evenodd"/><circle cx="32" cy="32" r="7" fill="${accent}"/>`;
+    case "search":
+      return `<circle cx="29" cy="29" r="13" fill="${fg}" opacity=".94"/><circle cx="29" cy="29" r="8" fill="none" stroke="${accent}" stroke-width="3" opacity=".75"/><path d="M39 39l9 9" ${line}/>`;
+    case "map":
+      return `<path d="M18 18l10-4 10 4 10-4v32l-10 4-10-4-10 4z" fill="${fg}" opacity=".94"/><path d="M28 14v32M38 18v32" stroke="${accent}" stroke-width="2.5" opacity=".65"/><circle cx="33" cy="29" r="4" fill="${accent}"/>`;
+    case "shop":
+      return `<path d="M18 28h28l-3 21H21z" fill="${fg}" opacity=".94"/><path d="M23 28a9 9 0 0 1 18 0" ${line}/><path d="M22 35h22" stroke="${accent}" stroke-width="3" opacity=".65"/>`;
+    case "book":
+      return `<path d="M18 16h22a6 6 0 0 1 6 6v27H24a6 6 0 0 0-6 4z" fill="${fg}" opacity=".94"/><path d="M24 24h14M24 31h12M24 38h15" stroke="${accent}" stroke-width="3" stroke-linecap="round" opacity=".75"/>`;
+    case "health":
+      return `<path d="M32 48S17 39 17 27c0-7 8-11 15-4 7-7 15-3 15 4 0 12-15 21-15 21z" fill="${fg}" opacity=".94"/><path d="M25 32h5l2-6 3 12 2-6h5" ${line} opacity=".8"/>`;
+    case "database":
+      return `<ellipse cx="32" cy="20" rx="15" ry="7" fill="${fg}" opacity=".94"/><path d="M17 20v22c0 4 7 7 15 7s15-3 15-7V20" fill="${fg}" opacity=".94"/><path d="M17 31c0 4 7 7 15 7s15-3 15-7" fill="none" stroke="${accent}" stroke-width="3" opacity=".65"/>`;
+    case "rocket":
+      return `<path d="M36 13c8 3 12 11 12 19L36 44l-8-8 12-12-12 12-8-8z" fill="${fg}" opacity=".94"/><circle cx="38" cy="25" r="4" fill="${accent}"/><path d="M25 39l-7 7 10-3" fill="${accent}" opacity=".85"/>`;
+    case "widget":
+      return `<rect x="16" y="16" width="14" height="14" rx="4" fill="${fg}" opacity=".94"/><rect x="34" y="16" width="14" height="14" rx="4" fill="${fg}" opacity=".72"/><rect x="16" y="34" width="14" height="14" rx="4" fill="${fg}" opacity=".72"/><rect x="34" y="34" width="14" height="14" rx="4" fill="${fg}" opacity=".94"/><circle cx="41" cy="41" r="4" fill="${accent}"/>`;
     default:
-      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".18"/><text x="32" y="39" text-anchor="middle" font-family="Inter,system-ui,-apple-system,sans-serif" font-size="20" font-weight="800" fill="${fg}">${htmlEscape(initials)}</text><path d="M46 15l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="${fg}" opacity=".72"/>`;
+      return `<circle cx="32" cy="32" r="18" fill="${fg}" opacity=".16"/><text x="32" y="39" text-anchor="middle" font-family="Inter,system-ui,-apple-system,sans-serif" font-size="20" font-weight="850" fill="${fg}">${htmlEscape(initials)}</text><path d="M47 14l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="${fg}" opacity=".72"/>`;
   }
 }
 
@@ -1554,11 +1757,27 @@ function iconFor(n) {
   const kind = iconKindFor(name);
   const initials = appInitials(name);
   const fg = "#ffffff";
-  const blobX = 15 + (hash % 18);
-  const blobY = 10 + ((hash >>> 5) % 16);
-  const ringX = 36 + ((hash >>> 9) % 12);
-  const ringY = 38 + ((hash >>> 13) % 10);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="${htmlEscape(name)} icon"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#020617" flood-opacity=".28"/></filter></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><circle cx="${blobX}" cy="${blobY}" r="21" fill="${fg}" opacity=".12"/><circle cx="${ringX}" cy="${ringY}" r="16" fill="none" stroke="${fg}" stroke-width="8" opacity=".1"/><g filter="url(#s)">${iconShape(kind, initials, fg, accent)}</g></svg>`;
+  const id = hash.toString(36);
+  const blobX = 12 + (hash % 22);
+  const blobY = 8 + ((hash >>> 5) % 18);
+  const ringX = 34 + ((hash >>> 9) % 14);
+  const ringY = 36 + ((hash >>> 13) % 12);
+  const shineX = 8 + ((hash >>> 17) % 10);
+  const aria = htmlEscape(name);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="${aria} icon">
+  <defs>
+    <linearGradient id="g-${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset=".58" stop-color="${to}"/><stop offset="1" stop-color="${accent}"/></linearGradient>
+    <radialGradient id="r-${id}" cx=".25" cy=".18" r=".9"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".62" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <filter id="s-${id}" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#020617" flood-opacity=".3"/></filter>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#g-${id})"/>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#r-${id})"/>
+  <path d="M${shineX} 8c12-5 30-4 43 8" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".1"/>
+  <circle cx="${blobX}" cy="${blobY}" r="21" fill="${fg}" opacity=".12"/>
+  <circle cx="${ringX}" cy="${ringY}" r="16" fill="none" stroke="${fg}" stroke-width="8" opacity=".1"/>
+  <g filter="url(#s-${id})">${iconShape(kind, initials, fg, accent)}</g>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="16.5" fill="none" stroke="#fff" stroke-opacity=".18"/>
+</svg>`;
   return encodeSVG(svg);
 }
 
