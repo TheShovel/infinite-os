@@ -12,6 +12,7 @@ const AI_REPAIR_TEMPERATURE = 0.25;
 
 const DEFAULT_DESKTOP_MENU_ITEMS = [
   "launcher",
+  "addWidget",
   "showDesktop",
   "refreshDesktop",
   "closeWindows",
@@ -21,6 +22,7 @@ const DEFAULT_DESKTOP_MENU_ITEMS = [
 ];
 
 const appCache = {};
+const WIDGETS_LS_KEY = "io_widgets";
 
 // ─── OS App Spec (fed to the AI so it knows how to build apps) ─────
 const APP_SPEC = `You are an expert HTML/CSS/JS developer. Build a polished, complete, fully functional HTML app that looks like a real desktop application.
@@ -227,6 +229,22 @@ User request: "${desc}"
 Generate the complete, functional HTML for this app. Output exactly one root <div class="app-{name}">, replacing {name} with a short lowercase slug, with inline <style> and <script>. Only output the HTML code, no other text.`;
 }
 
+function buildWidgetPrompt(desc) {
+  return `You are building a tiny desktop widget for Infinite OS.
+
+User request: "${desc}"
+
+Requirements:
+- Output ONLY HTML code. No markdown, no explanations.
+- Output exactly one root <div class="widget-{short-slug}"> with inline <style> and optional inline <script> inside it.
+- The widget will run in a 240px wide transparent iframe. Make it compact, polished, and readable at that size.
+- Use CSS variables when possible: var(--os-bg), var(--os-bg2), var(--os-bg3), var(--os-surface), var(--os-border), var(--os-text), var(--os-text2), var(--os-accent).
+- Do not use browser alert(), prompt(), or confirm(). If interaction is needed, build controls in the widget UI.
+- Do not load external resources, fonts, scripts, images, or network data.
+- Keep scripts self-contained. Avoid localStorage unless the user specifically asks for persistence.
+- Build exactly what the user requested; do not add unrelated panels, system stats, or dashboards.`;
+}
+
 function htmlEscape(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => {
     return {
@@ -258,7 +276,15 @@ ${detail}
 }
 
 // ─── State ─────────────────────────────────────────────────────────
-const S = { windows: {}, order: [], z: 100, launcher: false };
+const S = {
+  windows: {},
+  order: [],
+  z: 100,
+  launcher: false,
+  widgets: [],
+  widgetZ: 1,
+  contextMenu: { x: 0, y: 0 },
+};
 
 // ═══════════════════════════════════════════════════════════════════════
 // HTML EXTRACTION (balanced div counting for AI output)
@@ -1380,6 +1406,49 @@ body{overflow:auto}button,input,textarea,select{font:inherit}
 </html>`;
 }
 
+function widgetDocument(id, html) {
+  const widgetId = JSON.stringify(String(id).replace(/^widget-/, ""));
+  const themeCSS = getThemeCSS();
+  const colorScheme =
+    window.os.settings.get("theme", "dark") === "light" ? "light" : "dark";
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+:root{${themeCSS}}
+*,*::before,*::after{box-sizing:border-box}
+html{margin:0;width:100%;min-height:0;background:transparent;color-scheme:${colorScheme};overflow:hidden;scrollbar-width:none}
+html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
+body{margin:0;width:max-content;min-width:100%;min-height:0;background:transparent;color:var(--os-text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;overflow:hidden;scrollbar-width:none}
+button,input,textarea,select{font:inherit}
+</style>
+<script>
+(() => {
+  const widgetId = ${widgetId};
+  const measure = () => {
+    const nodes = [document.body, document.documentElement, ...document.body.querySelectorAll('*')];
+    let right = 0, bottom = 0;
+    for (const node of nodes) {
+      const rect = node.getBoundingClientRect();
+      right = Math.max(right, rect.right, node.scrollWidth || 0, node.offsetWidth || 0);
+      bottom = Math.max(bottom, rect.bottom, node.scrollHeight || 0, node.offsetHeight || 0);
+    }
+    parent.postMessage({ type: 'io-widget-size', id: widgetId, w: Math.ceil(right), h: Math.ceil(bottom) }, '*');
+  };
+  const schedule = () => requestAnimationFrame(measure);
+  addEventListener('load', () => { measure(); setTimeout(measure, 50); setTimeout(measure, 250); });
+  addEventListener('resize', schedule);
+  new ResizeObserver(schedule).observe(document.documentElement);
+  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+})();
+</script>
+</head>
+<body>${html}</body>
+</html>`;
+}
+
 const ICON_PALETTES = [
   ["#7c3aed", "#a78bfa", "#22d3ee"],
   ["#0ea5e9", "#38bdf8", "#facc15"],
@@ -1957,14 +2026,10 @@ function syncAppThemes() {
   const css = getThemeCSS();
   const colorScheme =
     window.os.settings.get("theme", "dark") === "light" ? "light" : "dark";
-  for (const id of Object.keys(S.windows)) {
-    const body = document.getElementById("wb-" + id);
-    if (!body) continue;
-    const frame = body.querySelector("iframe.app-frame");
-    if (!frame) continue;
+  const syncFrame = (frame) => {
     try {
       const doc = frame.contentDocument;
-      if (!doc) continue;
+      if (!doc) return;
       let style = doc.getElementById("os-theme-vars");
       if (!style) {
         style = doc.createElement("style");
@@ -1974,7 +2039,15 @@ function syncAppThemes() {
       style.textContent = ":root{" + css + "}";
       doc.documentElement.style.colorScheme = colorScheme;
     } catch (e) {}
+  };
+
+  for (const id of Object.keys(S.windows)) {
+    const body = document.getElementById("wb-" + id);
+    if (!body) continue;
+    const frame = body.querySelector("iframe.app-frame");
+    if (frame) syncFrame(frame);
   }
+  document.querySelectorAll("iframe.desktop-widget-frame").forEach(syncFrame);
 }
 
 function applySettings() {
@@ -2172,6 +2245,519 @@ function showNotif(t, m) {
 function clock() {
   document.getElementById("tb-clock").textContent =
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  updateWidgetClocks();
+}
+
+function widgetId() {
+  return (
+    "wg_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+  );
+}
+
+function widgetTitle(text) {
+  const words = String(text || "Widget")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4);
+  const title = words.join(" ") || "Widget";
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+function widgetSpecFromPrompt(promptText) {
+  const text = String(promptText || "Widget").trim() || "Widget";
+  const q = text.toLowerCase();
+
+  if (/\b(clock|time|date)\b/.test(q)) return { title: "Clock", icon: "🕒" };
+  if (/\b(todo|task|checklist|list)\b/.test(q)) {
+    return { title: "Checklist", icon: "✅" };
+  }
+  if (/\b(note|sticky)\b/.test(q)) return { title: "Note", icon: "📝" };
+  if (/\breminder\b/.test(q)) return { title: "Reminder", icon: "🔔" };
+  if (/\b(weather|forecast)\b/.test(q)) return { title: "Weather", icon: "🌤️" };
+
+  return { title: widgetTitle(text), icon: "✨" };
+}
+
+function normalizeGeneratedWidgetHTML(raw) {
+  let html = stripAIFormatting(raw) || "";
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) html = bodyMatch[1].trim();
+  html =
+    extractHTML(html) ||
+    html
+      .replace(
+        /<script\b[^>]*\bsrc\s*=\s*["'][^"']*["'][^>]*>[\s\S]*?<\/script>/gi,
+        "",
+      )
+      .replace(/<link\b[\s\S]*?>/gi, "")
+      .trim();
+  if (!/^<div[\s>]/i.test(html)) {
+    html = `<div class="widget-generated"><style>.widget-generated{padding:14px;color:var(--os-text);font:13px/1.45 system-ui,sans-serif}</style>${htmlEscape(html || "Widget generated.")}</div>`;
+  }
+  return html;
+}
+
+async function generateWidgetHTML(desc) {
+  const raw = await callAI(buildWidgetPrompt(desc), null, {
+    temperature: 0.75,
+    maxOutputTokens: 2200,
+  });
+  return raw ? normalizeGeneratedWidgetHTML(raw) : null;
+}
+
+function widgetBodyClass(widget) {
+  return widget.html ? "desktop-widget-body has-frame" : "desktop-widget-body";
+}
+
+function widgetBodyHTML(widget) {
+  if (widget.status === "generating") {
+    return `<div class="desktop-widget-status"><span class="spinner"></span><strong>Generating widget…</strong><small>Asking AI to build “${htmlEscape(widget.prompt || widget.title || "widget")}”</small></div>`;
+  }
+  if (widget.status === "error") {
+    return `<div class="desktop-widget-status error"><strong>Couldn’t generate widget</strong><small>${htmlEscape(widget.error || "The AI backend did not return a widget.")}</small></div>`;
+  }
+  if (widget.html) {
+    return `<iframe class="desktop-widget-frame" data-widget-frame="${widget.id}" title="${htmlEscape(widget.title || "Widget")}" scrolling="no"></iframe>`;
+  }
+
+  if (widget.type === "clock") {
+    return `<div class="desktop-widget-clock" data-widget-clock="${widget.id}"><strong>--:--</strong><span>Loading date…</span></div>`;
+  }
+  if (widget.type === "list") {
+    const items = String(widget.text || "")
+      .split(/\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return `<ul class="desktop-widget-list">${items
+      .map((item) => `<li>${htmlEscape(item)}</li>`)
+      .join("")}</ul>`;
+  }
+  return htmlEscape(widget.text || "Double-click to regenerate this widget.");
+}
+
+function saveDesktopWidgets() {
+  try {
+    localStorage.setItem(WIDGETS_LS_KEY, JSON.stringify(S.widgets));
+  } catch {}
+}
+
+function clampWidgetPos(widget) {
+  const desktop = document.getElementById("desktop");
+  if (!desktop) return;
+  const rect = desktop.getBoundingClientRect();
+  const width = widget.w || 240;
+  const height = widget.h || 132;
+  widget.x = Math.max(8, Math.min(rect.width - width - 8, widget.x || 8));
+  widget.y = Math.max(8, Math.min(rect.height - height - 8, widget.y || 8));
+}
+
+function applyWidgetFrameSize(id, width, height) {
+  const widget = findWidget(id);
+  const el = document.getElementById(id);
+  const desktop = document.getElementById("desktop");
+  const frame = el?.querySelector("iframe.desktop-widget-frame");
+  const body = el?.querySelector(".desktop-widget-body.has-frame");
+  if (!widget || !el || !desktop || !frame || !body) return;
+
+  const headerHeight =
+    el.querySelector(".desktop-widget-head")?.offsetHeight || 34;
+  const desktopRect = desktop.getBoundingClientRect();
+  const maxWidth = Math.max(220, Math.min(520, desktopRect.width - 16));
+  const maxBodyHeight = Math.max(96, desktopRect.height - headerHeight - 16);
+  const nextWidth = Math.max(220, Math.min(Math.ceil(width || 240), maxWidth));
+  const bodyHeight = Math.max(
+    96,
+    Math.min(Math.ceil(height || 96), maxBodyHeight),
+  );
+
+  widget.w = nextWidth;
+  widget.h = headerHeight + bodyHeight;
+  el.style.width = nextWidth + "px";
+  body.style.height = bodyHeight + "px";
+  frame.style.height = bodyHeight + "px";
+  frame.setAttribute("height", String(bodyHeight));
+  clampWidgetPos(widget);
+  el.style.left = widget.x + "px";
+  el.style.top = widget.y + "px";
+}
+
+function resizeWidgetFrame(id) {
+  const frame = document
+    .getElementById(id)
+    ?.querySelector("iframe.desktop-widget-frame");
+  if (!frame) return;
+
+  try {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    const measured = Array.from(
+      doc.body
+        ? [doc.body, doc.documentElement, ...doc.body.querySelectorAll("*")]
+        : [],
+    ).reduce(
+      (box, node) => {
+        const rect = node.getBoundingClientRect();
+        return {
+          right: Math.max(
+            box.right,
+            rect.right,
+            node.scrollWidth || 0,
+            node.offsetWidth || 0,
+          ),
+          bottom: Math.max(
+            box.bottom,
+            rect.bottom,
+            node.scrollHeight || 0,
+            node.offsetHeight || 0,
+          ),
+        };
+      },
+      { right: 0, bottom: 0 },
+    );
+    applyWidgetFrameSize(id, measured.right, measured.bottom);
+  } catch (e) {}
+}
+
+function watchWidgetFrame(id) {
+  const frame = document
+    .getElementById(id)
+    ?.querySelector("iframe.desktop-widget-frame");
+  if (!frame) return;
+  const resize = () => resizeWidgetFrame(id);
+  resize();
+  requestAnimationFrame(resize);
+  setTimeout(resize, 50);
+  setTimeout(resize, 300);
+
+  try {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    frame._widgetResizeObserver?.disconnect?.();
+    frame._widgetMutationObserver?.disconnect?.();
+
+    const resizeObserver = new ResizeObserver(resize);
+    if (doc.documentElement) resizeObserver.observe(doc.documentElement);
+    if (doc.body) resizeObserver.observe(doc.body);
+    frame._widgetResizeObserver = resizeObserver;
+
+    if (doc.body) {
+      const mutationObserver = new MutationObserver(() =>
+        requestAnimationFrame(resize),
+      );
+      mutationObserver.observe(doc.body, {
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
+      frame._widgetMutationObserver = mutationObserver;
+    }
+  } catch (e) {}
+}
+
+function renderDesktopWidget(widget) {
+  const container = document.getElementById("desktop-widgets");
+  if (!container) return;
+  const old = document.getElementById(widget.id);
+  if (old) old.remove();
+  clampWidgetPos(widget);
+
+  const el = document.createElement("div");
+  el.className = "desktop-widget";
+  el.id = widget.id;
+  el.dataset.id = widget.id;
+  Object.assign(el.style, {
+    left: widget.x + "px",
+    top: widget.y + "px",
+    width: (widget.w || 240) + "px",
+    zIndex: widget.z || 1,
+  });
+  el.innerHTML = `<div class="desktop-widget-head" onmousedown="dragWidget(event,'${widget.id}')">
+    <div class="desktop-widget-title"><span>${htmlEscape(widget.icon || "✨")}</span><span>${htmlEscape(widget.title || "Widget")}</span></div>
+    <div class="desktop-widget-actions">
+      <button onclick="editWidget('${widget.id}')" title="Regenerate widget" aria-label="Regenerate widget">✎</button>
+      <button onclick="removeWidget('${widget.id}')" title="Remove widget" aria-label="Remove widget">×</button>
+    </div>
+  </div>
+  <div class="${widgetBodyClass(widget)}" ondblclick="editWidget('${widget.id}')">${widgetBodyHTML(widget)}</div>`;
+  container.appendChild(el);
+  const frame = el.querySelector("[data-widget-frame]");
+  if (frame && widget.html) {
+    frame.onload = () => watchWidgetFrame(widget.id);
+    frame.srcdoc = widgetDocument("widget-" + widget.id, widget.html);
+  }
+  updateWidgetClocks();
+}
+
+function renderDesktopWidgets() {
+  const container = document.getElementById("desktop-widgets");
+  if (!container) return;
+  container.innerHTML = "";
+  S.widgets.forEach(renderDesktopWidget);
+}
+
+function loadDesktopWidgets() {
+  try {
+    const widgets = JSON.parse(localStorage.getItem(WIDGETS_LS_KEY) || "[]");
+    S.widgets = Array.isArray(widgets) ? widgets : [];
+  } catch {
+    S.widgets = [];
+  }
+  S.widgetZ =
+    S.widgets.reduce((max, widget) => Math.max(max, widget.z || 1), 1) + 1;
+  renderDesktopWidgets();
+}
+
+function showWidgetDialog(options = {}) {
+  return new Promise((resolve) => {
+    document.querySelector(".widget-dialog-o")?.remove();
+    const isConfirm = options.mode === "confirm";
+    const overlay = document.createElement("div");
+    overlay.className = "widget-dialog-o";
+    overlay.innerHTML = `<div class="widget-dialog" role="dialog" aria-modal="true" aria-label="${htmlEscape(options.title || "Widget")}">
+      <div class="widget-dialog-head">
+        <span>${htmlEscape(options.icon || "✨")}</span>
+        <div>
+          <strong>${htmlEscape(options.title || "Widget")}</strong>
+          <small>${htmlEscape(options.message || "")}</small>
+        </div>
+      </div>
+      ${
+        isConfirm
+          ? ""
+          : `<textarea class="widget-dialog-input" rows="4" placeholder="${htmlEscape(options.placeholder || "Describe a widget…")}">${htmlEscape(options.value || "")}</textarea>
+             <p class="widget-dialog-hint">Tip: try “clock with date”, “sticky note for launch ideas”, or “todo list for today”.</p>`
+      }
+      <div class="widget-dialog-actions">
+        <button class="widget-dialog-cancel" data-cancel>Cancel</button>
+        <button class="widget-dialog-ok${options.danger ? " danger" : ""}" data-ok>${htmlEscape(options.confirmText || "Generate")}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector(".widget-dialog-input");
+    const close = (value) => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      resolve(value);
+    };
+    const submit = () => {
+      if (isConfirm) {
+        close(true);
+        return;
+      }
+      const value = input.value.trim();
+      if (!value) {
+        input.focus();
+        return;
+      }
+      close(value);
+    };
+    const cancelValue = isConfirm ? false : null;
+    const onKey = (e) => {
+      if (e.key === "Escape") close(cancelValue);
+      if (e.key === "Enter" && (isConfirm || e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        submit();
+      }
+    };
+
+    overlay.querySelector("[data-cancel]").onclick = () => close(cancelValue);
+    overlay.querySelector("[data-ok]").onclick = submit;
+    overlay.addEventListener("mousedown", (e) => {
+      if (e.target === overlay) close(cancelValue);
+    });
+    document.addEventListener("keydown", onKey);
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  });
+}
+
+async function addDesktopWidget(promptText, x, y) {
+  const spec = widgetSpecFromPrompt(promptText);
+  const widget = {
+    id: widgetId(),
+    title: spec.title,
+    icon: spec.icon,
+    prompt: promptText,
+    html: "",
+    status: "generating",
+    x: x || 80,
+    y: y || 80,
+    w: 240,
+    h: 132,
+    z: S.widgetZ++,
+  };
+  clampWidgetPos(widget);
+  S.widgets.push(widget);
+  renderDesktopWidget(widget);
+
+  try {
+    const html = await generateWidgetHTML(promptText);
+    if (!html) throw new Error("The AI backend did not return widget HTML.");
+    widget.html = html;
+    widget.status = "ready";
+    widget.error = "";
+    renderDesktopWidget(widget);
+    saveDesktopWidgets();
+    showNotif("✨ Widget added", `${widget.title} is now on the desktop`);
+  } catch (e) {
+    widget.status = "error";
+    widget.error = e?.message || "Widget generation failed.";
+    renderDesktopWidget(widget);
+    saveDesktopWidgets();
+    showNotif("⚠️ Widget failed", widget.error);
+  }
+}
+
+async function generateWidgetFromDesktopMenu() {
+  const pos = S.contextMenu || { x: 80, y: 80 };
+  closeDesktopMenu();
+  const request = await showWidgetDialog({
+    title: "Generate Widget",
+    message: "Describe the widget you want on your desktop.",
+    value: "Clock with date",
+    placeholder: "Example: compact weather card, sticky note, focus timer…",
+    confirmText: "Generate",
+  });
+  if (!request) return;
+  addDesktopWidget(request, pos.x, pos.y);
+}
+
+function findWidget(id) {
+  return S.widgets.find((widget) => widget.id === id) || null;
+}
+
+function focusWidget(id) {
+  const widget = findWidget(id);
+  const el = document.getElementById(id);
+  if (!widget || !el) return;
+  widget.z = S.widgetZ++;
+  el.style.zIndex = widget.z;
+  saveDesktopWidgets();
+}
+
+function dragWidget(e, id) {
+  if (e.target.closest("button")) return;
+  const widget = findWidget(id);
+  const el = document.getElementById(id);
+  if (!widget || !el) return;
+  e.preventDefault();
+  focusWidget(id);
+  const sx = e.clientX;
+  const sy = e.clientY;
+  const sl = widget.x;
+  const st = widget.y;
+  const mv = (ev) => {
+    widget.x = sl + (ev.clientX - sx);
+    widget.y = st + (ev.clientY - sy);
+    clampWidgetPos(widget);
+    el.style.left = widget.x + "px";
+    el.style.top = widget.y + "px";
+  };
+  const up = () => {
+    document.removeEventListener("mousemove", mv);
+    document.removeEventListener("mouseup", up);
+    window.removeEventListener("blur", up);
+    saveDesktopWidgets();
+  };
+  document.addEventListener("mousemove", mv);
+  document.addEventListener("mouseup", up);
+  window.addEventListener("blur", up);
+}
+
+async function editWidget(id) {
+  const widget = findWidget(id);
+  if (!widget) return;
+  const next = await showWidgetDialog({
+    title: "Regenerate Widget",
+    message: "Update the prompt and AI will rebuild this widget.",
+    value: widget.prompt || widget.text || widget.title || "Widget",
+    placeholder: "Describe the regenerated widget…",
+    confirmText: "Regenerate",
+  });
+  if (!next) return;
+
+  const previous = { ...widget };
+  const spec = widgetSpecFromPrompt(next);
+  widget.title = spec.title;
+  widget.icon = spec.icon;
+  widget.prompt = next;
+  widget.html = "";
+  widget.status = "generating";
+  widget.error = "";
+  renderDesktopWidget(widget);
+
+  try {
+    const html = await generateWidgetHTML(next);
+    if (!html) throw new Error("The AI backend did not return widget HTML.");
+    widget.html = html;
+    widget.status = "ready";
+    renderDesktopWidget(widget);
+    saveDesktopWidgets();
+    showNotif("✨ Widget regenerated", `${widget.title} was rebuilt by AI`);
+  } catch (e) {
+    Object.assign(widget, previous);
+    renderDesktopWidget(widget);
+    showNotif(
+      "⚠️ Regeneration failed",
+      e?.message || "Widget generation failed.",
+    );
+  }
+}
+
+async function removeWidget(id) {
+  const widget = findWidget(id);
+  if (!widget) return;
+  const ok = await showWidgetDialog({
+    mode: "confirm",
+    icon: "🗑️",
+    title: "Remove Widget",
+    message: `Remove ${widget.title || "this widget"} from the desktop?`,
+    confirmText: "Remove",
+    danger: true,
+  });
+  if (!ok) return;
+  S.widgets = S.widgets.filter((item) => item.id !== id);
+  document.getElementById(id)?.remove();
+  saveDesktopWidgets();
+}
+
+function updateWidgetClocks() {
+  document.querySelectorAll("[data-widget-clock]").forEach((el) => {
+    const time = el.querySelector("strong");
+    const date = el.querySelector("span");
+    const now = new Date();
+    if (time) {
+      time.textContent = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+    if (date) {
+      date.textContent = now.toLocaleDateString([], {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+      });
+    }
+  });
+}
+
+function reclampDesktopWidgets() {
+  S.widgets.forEach((widget) => {
+    resizeWidgetFrame(widget.id);
+    clampWidgetPos(widget);
+    const el = document.getElementById(widget.id);
+    if (el) {
+      el.style.left = widget.x + "px";
+      el.style.top = widget.y + "px";
+    }
+  });
+  saveDesktopWidgets();
 }
 
 function closeDesktopMenu() {
@@ -2189,6 +2775,16 @@ function desktopMenuActions() {
       shortcut: "Ctrl K",
       group: "main",
       run: openLauncherFromDesktopMenu,
+    },
+    {
+      id: "addWidget",
+      icon: "✨",
+      title: "Generate Widget",
+      label: "✨ Generate Widget",
+      description: "Create a movable desktop widget here.",
+      shortcut: "",
+      group: "main",
+      run: generateWidgetFromDesktopMenu,
     },
     {
       id: "showDesktop",
@@ -2379,6 +2975,7 @@ function renderDesktopContextMenu() {
 }
 
 function showDesktopMenu(x, y) {
+  S.contextMenu = { x, y };
   const menu = document.getElementById("ctx");
   if (!menu) return;
   renderDesktopContextMenu();
@@ -2433,9 +3030,13 @@ function showDesktop() {
 function refreshDesktop() {
   closeDesktopMenu();
   loadSavedApps();
+  loadDesktopWidgets();
   applySettings();
   updTB();
-  showNotif("🔄 Desktop refreshed", "Icons, taskbar, and theme were refreshed");
+  showNotif(
+    "🔄 Desktop refreshed",
+    "Icons, widgets, taskbar, and theme were refreshed",
+  );
 }
 
 function closeAllWindows() {
@@ -2465,7 +3066,8 @@ function closeAllWindows() {
 document.addEventListener("contextmenu", (e) => {
   const onDesktop = e.target.closest("#desktop");
   const onDesktopIcon = e.target.closest(".desktop-icon");
-  if (!onDesktop || onDesktopIcon) return;
+  const onDesktopWidget = e.target.closest(".desktop-widget");
+  if (!onDesktop || onDesktopIcon || onDesktopWidget) return;
   e.preventDefault();
   showDesktopMenu(e.clientX, e.clientY);
 });
@@ -2754,6 +3356,13 @@ function restartOS() {
   setTimeout(() => location.reload(), 800);
 }
 
+window.addEventListener("resize", reclampDesktopWidgets);
+window.addEventListener("message", (e) => {
+  const data = e.data;
+  if (!data || data.type !== "io-widget-size") return;
+  applyWidgetFrameSize(data.id, data.w, data.h);
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && S.launcher) closeLauncher();
   if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -2795,6 +3404,7 @@ bootPhases.forEach(({ msg, pct, delay }) => {
 });
 
 setTimeout(loadSavedApps, 2200);
+setTimeout(loadDesktopWidgets, 2300);
 setTimeout(applySettings, 2400);
 
 setTimeout(() => {
