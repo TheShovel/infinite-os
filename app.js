@@ -1312,10 +1312,12 @@ function dr(e, id) {
     }
   };
   const up = () => {
+    document.body.classList.remove("is-dragging");
     document.removeEventListener("mousemove", mv);
     document.removeEventListener("mouseup", up);
     window.removeEventListener("blur", up);
   };
+  document.body.classList.add("is-dragging");
   document.addEventListener("mousemove", mv);
   document.addEventListener("mouseup", up);
   window.addEventListener("blur", up);
@@ -1341,10 +1343,12 @@ function rz(e, id) {
     }
   };
   const up = () => {
+    document.body.classList.remove("is-resizing");
     document.removeEventListener("mousemove", mv);
     document.removeEventListener("mouseup", up);
     window.removeEventListener("blur", up);
   };
+  document.body.classList.add("is-resizing");
   document.addEventListener("mousemove", mv);
   document.addEventListener("mouseup", up);
   window.addEventListener("blur", up);
@@ -2882,11 +2886,13 @@ function dragWidget(e, id) {
     el.style.top = widget.y + "px";
   };
   const up = () => {
+    document.body.classList.remove("is-dragging");
     document.removeEventListener("mousemove", mv);
     document.removeEventListener("mouseup", up);
     window.removeEventListener("blur", up);
     saveDesktopWidgets();
   };
+  document.body.classList.add("is-dragging");
   document.addEventListener("mousemove", mv);
   document.addEventListener("mouseup", up);
   window.addEventListener("blur", up);

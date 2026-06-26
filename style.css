@@ -473,6 +473,13 @@ body {
     border: 0;
     background: transparent;
     color-scheme: dark;
+    pointer-events: auto;
+}
+body.is-dragging .app-frame,
+body.is-resizing .app-frame,
+body.is-dragging .desktop-widget-frame,
+body.is-resizing .desktop-widget-frame {
+    pointer-events: none !important;
 }
 .wrz {
     position: absolute;
