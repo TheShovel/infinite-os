@@ -10,6 +10,11 @@
 
 </div>
 
+
+---
+
+![Infinite OS Screenshot](readme-images/Screenshot_20260626_144928.png)
+
 ---
 
 ## Quick Start
