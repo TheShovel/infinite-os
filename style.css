@@ -1,4 +1,4 @@
-/* ─── Infinite OS — Styles ──────────────────────────────────────────── */
+/* Infinite OS — Styles */
 *,
 *::before,
 *::after {
@@ -34,7 +34,6 @@ body {
     user-select: none;
 }
 
-/* Desktop */
 #desktop {
     position: fixed;
     inset: 0 0 var(--taskbar-height) 0;
@@ -353,7 +352,6 @@ body {
     max-width: 72px;
 }
 
-/* Windows */
 #windows-container {
     position: fixed;
     inset: 0 0 var(--taskbar-height) 0;
@@ -502,7 +500,7 @@ body.is-resizing .desktop-widget-frame {
     opacity: 0.3;
 }
 
-/* ─── Boot Screen ────────────────────────────────────────────────── */
+/* Boot Screen */
 #boot {
     position: fixed;
     inset: 0;
@@ -644,7 +642,6 @@ body.is-resizing .desktop-widget-frame {
     }
 }
 
-/* Starfield */
 #boot-stars {
     position: absolute;
     inset: 0;
@@ -662,7 +659,6 @@ body.is-resizing .desktop-widget-frame {
     }
 }
 
-/* Taskbar */
 #taskbar {
     position: fixed;
     bottom: 0;
@@ -754,7 +750,7 @@ body.is-resizing .desktop-widget-frame {
     font-variant-numeric: tabular-nums;
 }
 
-/* ─── Start Menu (sm) ──────────────────────────────────────────── */
+/* Start Menu */
 #sm-body {
     display: flex;
     flex-direction: column;
@@ -791,7 +787,7 @@ body.is-resizing .desktop-widget-frame {
     font-size: 15px;
 }
 
-/* ─── Settings App ──────────────────────────────────────────────── */
+/* Settings App */
 .settings-wrap {
     padding: 20px;
     overflow-y: auto;

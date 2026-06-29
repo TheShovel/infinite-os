@@ -1,7 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════
-// Infinite OS — Template App Generators
-// Fallback when the AI model isn't ready yet.
-// ═══════════════════════════════════════════════════════════════════════
+// Infinite OS — Template App Generators (fallback when AI isn't ready)
 
 const TemplateApps = (window.TemplateApps = window.TemplateApps || {
   state: {},
@@ -62,7 +59,7 @@ function genTemplate(desc) {
   return tGeneric(id, desc);
 }
 
-// ─── Shared template runtime ──────────────────────────────────────────
+// Shared template runtime
 
 TemplateApps.calcPress = function calcPress(id, value) {
   const el = document.getElementById("cd-" + id);

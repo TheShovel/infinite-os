@@ -1,8 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════
-// Infinite OS — Desktop Environment + Cloud AI Engine (Google Gemini)
-// ═══════════════════════════════════════════════════════════════════════
-
-// ─── Backend Configuration ─────────────────────────────────────────
+// Backend Configuration
 const AI_BACKEND_URL = "https://gemini-proxy.niccata24.workers.dev/gemini";
 
 const AI_MODEL = "gemini-2.0-flash";
@@ -25,7 +21,7 @@ const DEFAULT_DESKTOP_MENU_ITEMS = [
 const appCache = {};
 const WIDGETS_LS_KEY = "io_widgets";
 
-// ─── OS App Spec (fed to the AI so it knows how to build apps) ─────
+// OS App Spec
 const APP_SPEC = `You are an expert HTML/CSS/JS developer. Build a polished, complete, fully functional HTML app that looks like a real desktop application.
 
 Think through the requirements privately, then output only the complete HTML code. Do not include markdown, explanations, plans, or <thinking> tags.
@@ -277,7 +273,7 @@ ${detail}
 </div>`;
 }
 
-// ─── State ─────────────────────────────────────────────────────────
+// State
 const S = {
   windows: {},
   order: [],
@@ -288,9 +284,7 @@ const S = {
   contextMenu: { x: 0, y: 0 },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// HTML EXTRACTION (balanced div counting for AI output)
-// ═══════════════════════════════════════════════════════════════════════
+// HTML extraction
 
 function extractHTML(text) {
   const m = text.match(/<div\s+class\s*=\s*["'][^"']*\bapp-[^"']*["']/i);
@@ -553,7 +547,6 @@ function playStartupSound() {
       if (ctx.state === "suspended") ctx.resume();
       const now = ctx.currentTime;
 
-      // Rising arpeggio: C5 → E5 → G5 → C6
       const notes = [523.25, 659.25, 783.99, 1046.5];
       notes.forEach((freq, i) => {
         const osc = ctx.createOscillator();
@@ -568,7 +561,6 @@ function playStartupSound() {
         osc.stop(now + i * 0.1 + 0.4);
       });
 
-      // Soft sub-bass pad underneath
       const sub = ctx.createOscillator();
       const subGain = ctx.createGain();
       sub.type = "sine";
@@ -582,14 +574,11 @@ function playStartupSound() {
     } catch (_) {}
   };
 
-  // Defer AudioContext creation to first user gesture (avoids autoplay warnings)
   document.addEventListener("pointerdown", play, { once: true });
   document.addEventListener("keydown", play, { once: true });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// GOOGLE GEMINI API
-// ═══════════════════════════════════════════════════════════════════════
+// Gemini API
 
 async function callAI(prompt, onStream, options = {}) {
   const url = `${AI_BACKEND_URL}${onStream ? "?stream=1" : ""}`;
@@ -660,7 +649,7 @@ async function streamGeminiSSE(response, onChunk) {
   return fullText;
 }
 
-// ─── Streaming generation ───────────────────────────────────────────
+// Streaming generation
 async function streamApp(id, desc, onProgress) {
   const prompt = buildPrompt(desc);
 
@@ -691,15 +680,13 @@ async function genWithAI(desc) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
 // OS API (exposed to generated apps)
-// ═══════════════════════════════════════════════════════════════════════
 
 window.os = {
-  // ─── OS Version ────────────────────────────────────────────────
+  // OS Version
   version: "1.2.0",
 
-  // ─── Current App Window ───────────────────────────────────────
+  // Current App Window
   window: {
     _id: null,
     get title() {
@@ -733,7 +720,7 @@ window.os = {
     },
   },
 
-  // ─── Screen Info ──────────────────────────────────────────────
+  // Screen Info
   screen: {
     get size() {
       return { w: screen.width, h: screen.height };
@@ -743,7 +730,7 @@ window.os = {
     },
   },
 
-  // ─── System Info ──────────────────────────────────────────────
+  // System Info
   system: {
     get online() {
       return navigator.onLine;
@@ -771,7 +758,7 @@ window.os = {
     },
   },
 
-  // ─── All Windows Management ───────────────────────────────────
+  // All Windows Management
   windows: {
     list() {
       return Object.values(S.windows).map((w) => ({
@@ -794,7 +781,7 @@ window.os = {
     },
   },
 
-  // ─── Clipboard ────────────────────────────────────────────────
+  // Clipboard
   clipboard: {
     async write(text) {
       try {
@@ -813,7 +800,7 @@ window.os = {
     },
   },
 
-  // ─── Native Dialogs ───────────────────────────────────────────
+  // Native Dialogs
   dialog: {
     alert(msg) {
       alert(msg);
@@ -826,7 +813,7 @@ window.os = {
     },
   },
 
-  // ─── Audio / Sound ────────────────────────────────────────────
+  // Audio / Sound
   audio: {
     beep() {
       try {
@@ -862,7 +849,7 @@ window.os = {
     },
   },
 
-  // ─── Geolocation ──────────────────────────────────────────────
+  // Geolocation
   location: {
     current() {
       return new Promise((resolve) => {
@@ -884,7 +871,7 @@ window.os = {
     },
   },
 
-  // ─── Crypto / Random ──────────────────────────────────────────
+  // Crypto / Random
   crypto: {
     uuid() {
       return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -899,7 +886,7 @@ window.os = {
     },
   },
 
-  // ─── Web Share ────────────────────────────────────────────────
+  // Web Share
   async share(title, text, url) {
     if (!navigator.share) return false;
     try {
@@ -914,7 +901,7 @@ window.os = {
     }
   },
 
-  // ─── Date / Time ──────────────────────────────────────────────
+  // Date / Time
   date: {
     now() {
       return new Date().toISOString();
@@ -931,7 +918,7 @@ window.os = {
     },
   },
 
-  // ─── Shell / OS Actions ───────────────────────────────────────
+  // Shell / OS Actions
   shell: {
     openUrl(url) {
       window.open(url, "_blank", "noopener");
@@ -971,7 +958,7 @@ window.os = {
     },
   },
 
-  // ─── OS Settings (persistent theming) ────────────────────────
+  // OS Settings (persistent theming)
   settings: {
     _data: null,
     _lsKey: "io_settings",
@@ -1046,7 +1033,7 @@ window.os = {
     },
   },
 
-  // ─── Persistent Storage (fs) ──────────────────────────────────
+  // Persistent Storage (fs)
   fs: {
     read(k) {
       try {
@@ -1102,17 +1089,17 @@ window.os = {
     },
   },
 
-  // ─── Notifications ────────────────────────────────────────────
+  // Notifications
   notify(t, m) {
     showNotif(t, m);
   },
 
-  // ─── Theme ────────────────────────────────────────────────────
+  // Theme
   get theme() {
     return window.os.settings.get("theme", "dark");
   },
 
-  // ─── Random Color ─────────────────────────────────────────────
+  // Random Color
   randomColor() {
     const c = [
       "#7c3aed",
@@ -1129,15 +1116,13 @@ window.os = {
     return c[Math.floor(Math.random() * c.length)];
   },
 
-  // ─── Launch Apps ──────────────────────────────────────────────
+  // Launch Apps
   openApp(d) {
     openApp(d);
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// WINDOW MANAGER
-// ═══════════════════════════════════════════════════════════════════════
+// Window Manager
 
 function clampWinPos(win) {
   const vw = window.innerWidth;
@@ -1354,9 +1339,7 @@ function rz(e, id) {
   window.addEventListener("blur", up);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// APP LAUNCHER
-// ═══════════════════════════════════════════════════════════════════════
+// App Launcher
 
 function appDocument(id, html) {
   const appId = JSON.stringify(id);
@@ -2032,7 +2015,7 @@ function addDI(id, name, emoji) {
   document.getElementById("desktop-icons").appendChild(el);
 }
 
-// ─── Persistent App Cache (survives refresh) ──────────────────────────
+// Persistent App Cache
 
 function saveApp(id, name, html) {
   try {
@@ -2074,7 +2057,7 @@ function uninstallApp(id) {
   } catch (e) {}
 }
 
-// ─── Desktop Icon Helpers ─────────────────────────────────────────────
+// Desktop Icon Helpers
 
 function updateDI(id, name, emoji) {
   const el = document.getElementById("di-" + id);
@@ -2093,7 +2076,7 @@ function updateAppIconPreview(winId) {
   preview.innerHTML = iconHTML(icon, "properties-icon");
 }
 
-// ─── App Properties Window ────────────────────────────────────────────
+// App Properties Window
 
 function showAppProperties(id) {
   const winId = "_props_" + id;
@@ -2225,7 +2208,7 @@ function saveAppProperties(id, winId) {
   showNotif("⚙️ Properties", 'Updated "' + newName + '"');
 }
 
-// ─── Theme / Settings Application ────────────────────────────────────
+// Theme / Settings Application
 
 function darkenColor(hex, amount) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -2284,7 +2267,6 @@ function applySettings() {
   root.style.setProperty("--accent", s.accent);
   root.style.setProperty("--accent-hover", darkenColor(s.accent, 0.15));
 
-  // Apply theme CSS variables on :root for the main OS UI
   if (s.theme === "light") {
     root.style.setProperty("--bg", "#f5f5f7");
     root.style.setProperty("--bg2", "#ffffff");
@@ -2316,14 +2298,11 @@ function applySettings() {
   const existingDim = document.getElementById("os-wallpaper-dim");
 
   if (s.wallpaper) {
-    // Clean up any old wallpaper elements that may have been inside #desktop
     const oldWp = desktop.querySelector("#os-wallpaper");
     const oldDim = desktop.querySelector("#os-wallpaper-dim");
     if (oldWp) oldWp.remove();
     if (oldDim) oldDim.remove();
 
-    // Insert wallpaper elements as siblings BEFORE #desktop
-    // so they stack BEHIND the desktop and don't cover the icons
     let wp = existingWp;
     let dim = existingDim;
     if (!wp) {
@@ -2336,7 +2315,7 @@ function applySettings() {
       dim.id = "os-wallpaper-dim";
       desktop.parentNode.insertBefore(dim, desktop);
     }
-    // Position to same area as the desktop (above taskbar)
+
     Object.assign(wp.style, {
       position: "fixed",
       left: "0",
@@ -2382,9 +2361,7 @@ function applySettings() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// LAUNCHER
-// ═══════════════════════════════════════════════════════════════════════
+// Launcher
 
 function toggleLauncher() {
   S.launcher ? closeLauncher() : openLauncher();
@@ -2422,9 +2399,7 @@ async function searchApp() {
   }, 500);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// TASKBAR
-// ═══════════════════════════════════════════════════════════════════════
+// Taskbar
 
 function updTB() {
   const c = document.getElementById("tb-apps");
@@ -2449,9 +2424,7 @@ function updTB() {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// NOTIFICATIONS
-// ═══════════════════════════════════════════════════════════════════════
+// Notifications
 
 function showNotif(t, m) {
   const c = document.getElementById("notif-box");
@@ -2465,9 +2438,7 @@ function showNotif(t, m) {
   }, 5000);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// CLOCK / EVENTS / WELCOME / BOOT
-// ═══════════════════════════════════════════════════════════════════════
+// Clock / Events / Welcome / Boot
 
 function clock() {
   document.getElementById("tb-clock").textContent =
@@ -3510,7 +3481,7 @@ function showAbout() {
   document.body.appendChild(o);
 }
 
-// ─── Settings App ────────────────────────────────────────────────────
+// Settings App
 
 function openSettings() {
   const id = "_settings";
@@ -3699,7 +3670,6 @@ function renderSettingsBody(id, body) {
   </div>
 </div>`;
 
-  // Live wallpaper preview when URL changes
   const wpInput = document.getElementById("set-wp-" + id);
   const wpPreview = document.getElementById("wp-pv-" + id);
   if (wpInput && wpPreview) {
@@ -3711,7 +3681,6 @@ function renderSettingsBody(id, body) {
     });
   }
 
-  // Live range display update
   const blrInput = body.querySelector("input[type=range][min=0][max=20]");
   const dimInput = body.querySelector("input[type=range][min=0][max=1]");
   if (blrInput) {
@@ -3732,7 +3701,7 @@ function renderSettingsBody(id, body) {
   }
 }
 
-// ─── Restart OS / Factory Reset ──────────────────────────────────────
+// Restart OS / Factory Reset
 
 async function resetSettingsOS(settingsWinId) {
   const ok = await showWidgetDialog({
@@ -3804,9 +3773,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-// BOOT SEQUENCE
-// ═══════════════════════════════════════════════════════════════════════
+// Boot Sequence
 
 function dismissBoot() {
   const b = document.getElementById("boot");
@@ -3822,7 +3789,6 @@ clock();
 setInterval(clock, 1000);
 console.log("✦ Infinite OS loaded");
 
-// Boot sequence — phased loading with progress
 const bootPhases = [
   { msg: "Loading kernel modules...", pct: 15, delay: 600 },
   { msg: "Starting AI engine...", pct: 35, delay: 1200 },
